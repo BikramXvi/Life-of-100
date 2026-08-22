@@ -92,6 +92,22 @@ def _average_household_stress(engine: SimulationEngine) -> float:
     return sum(h.financial_stress for h in households) / len(households)
 
 
+def _primary_cause_event_id(engine: SimulationEngine, business) -> str | None:
+    """Explainability (SRS §22-23): if a disaster is active that plausibly
+    drove this business's distress, cite its real DISASTER_STARTED
+    event_id rather than leaving the JOB_LOST/BUSINESS_FAILED event
+    unexplained. Only ever cites a real event actually in the log."""
+    if business.industry in FOOD_INDUSTRIES:
+        for name in ("drought", "food_shortage"):
+            info = engine.active_disasters.get(name)
+            if info:
+                return info.get("event_id")
+    for info in engine.active_disasters.values():
+        if info.get("kind") in ("broad_cost_shock", "broad_demand_shock"):
+            return info.get("event_id")
+    return None
+
+
 def _update_businesses(engine: SimulationEngine) -> None:
     broad_cost_multiplier, broad_demand_multiplier = engine.broad_disaster_multipliers()
     demand_multiplier = max(0.5, 1.0 - _average_household_stress(engine) * 0.6) * broad_demand_multiplier
@@ -122,7 +138,11 @@ def _update_businesses(engine: SimulationEngine) -> None:
                 EventType.JOB_LOST,
                 source_entity=employee_id,
                 source_type="citizen",
-                payload={"business_id": business.business_id, "reason": "business_cost_pressure"},
+                payload={
+                    "business_id": business.business_id,
+                    "reason": "business_cost_pressure",
+                    "caused_by": _primary_cause_event_id(engine, business),
+                },
             )
             business.cash = max(business.cash, 0.0)
 
@@ -131,7 +151,7 @@ def _update_businesses(engine: SimulationEngine) -> None:
                 EventType.BUSINESS_FAILED,
                 source_entity=business.business_id,
                 source_type="business",
-                payload={"reason": "insolvent"},
+                payload={"reason": "insolvent", "caused_by": _primary_cause_event_id(engine, business)},
             )
 
 

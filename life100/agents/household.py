@@ -92,13 +92,13 @@ def propose_and_apply_household_decision(
         )
         return {"approved": False, "proposal": proposal, "reason": result.reason}
 
-    engine.emit(
+    accepted_event = engine.emit(
         EventType.AI_DECISION_ACCEPTED,
         source_entity="household_agent",
         source_type="ai_agent",
         payload={"proposal": proposal, "reason": result.reason, "proposed_event_id": proposed_event.event_id},
     )
-    applied = _apply_household_decision(engine, citizen, proposal)
+    applied = _apply_household_decision(engine, citizen, proposal, caused_by=accepted_event.event_id)
     return {
         "approved": True,
         "proposal": proposal,
@@ -107,7 +107,9 @@ def propose_and_apply_household_decision(
     }
 
 
-def _apply_household_decision(engine: SimulationEngine, citizen, proposal: dict[str, Any]) -> list[Event]:
+def _apply_household_decision(
+    engine: SimulationEngine, citizen, proposal: dict[str, Any], caused_by: str | None = None
+) -> list[Event]:
     action = proposal["action"]
     events: list[Event] = []
     rng = random.Random(engine.world.seed + engine.tick + hash(citizen.citizen_id) % 1000)
@@ -124,7 +126,12 @@ def _apply_household_decision(engine: SimulationEngine, citizen, proposal: dict[
                     EventType.JOB_STARTED,
                     source_entity=citizen.citizen_id,
                     source_type="citizen",
-                    payload={"business_id": business.business_id, "occupation": business.industry, "salary": salary},
+                    payload={
+                        "business_id": business.business_id,
+                        "occupation": business.industry,
+                        "salary": salary,
+                        "caused_by": caused_by,
+                    },
                 )
             )
     elif action == "take_major_loan":
@@ -133,7 +140,11 @@ def _apply_household_decision(engine: SimulationEngine, citizen, proposal: dict[
                 EventType.LOAN_CREATED,
                 source_entity=citizen.citizen_id,
                 source_type="citizen",
-                payload={"amount": proposal["amount"], "interest_rate": engine.government.interest_rate},
+                payload={
+                    "amount": proposal["amount"],
+                    "interest_rate": engine.government.interest_rate,
+                    "caused_by": caused_by,
+                },
             )
         )
     elif action == "move_house":
@@ -147,7 +158,11 @@ def _apply_household_decision(engine: SimulationEngine, citizen, proposal: dict[
                         EventType.MOVED,
                         source_entity=citizen.citizen_id,
                         source_type="citizen",
-                        payload={"household_id": household.household_id, "new_home_building_id": new_home.building_id},
+                        payload={
+                            "household_id": household.household_id,
+                            "new_home_building_id": new_home.building_id,
+                            "caused_by": caused_by,
+                        },
                     )
                 )
     elif action == "pursue_education":
@@ -158,7 +173,11 @@ def _apply_household_decision(engine: SimulationEngine, citizen, proposal: dict[
                     EventType.SCHOOL_ATTENDED,
                     source_entity=citizen.citizen_id,
                     source_type="citizen",
-                    payload={"education_level": citizen.education_level, "upgrade_to": next_level},
+                    payload={
+                        "education_level": citizen.education_level,
+                        "upgrade_to": next_level,
+                        "caused_by": caused_by,
+                    },
                 )
             )
     # "decline" applies nothing further -- the AI_DECISION_ACCEPTED event

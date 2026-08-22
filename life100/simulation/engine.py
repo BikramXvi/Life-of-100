@@ -384,6 +384,7 @@ def _apply_disaster_started(engine: SimulationEngine, event: Event) -> None:
         "duration": event.payload.get("duration_ticks", 20),
         "kind": event.payload.get("kind"),  # broad_cost_shock | broad_demand_shock | None
         "magnitude": event.payload.get("magnitude", 0.0),
+        "event_id": event.event_id,  # explainability: lets downstream events cite the real trigger
     }
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from life100.api.dependencies import get_engine
+from life100.simulation import memory
 from life100.simulation.citizens import Citizen
 from life100.simulation.engine import SimulationEngine
 
@@ -56,6 +57,16 @@ def get_citizen(citizen_id: str, engine: SimulationEngine = Depends(get_engine))
             {"business_id": business.business_id, "industry": business.industry} if business else None
         ),
     }
+
+
+@router.get("/{citizen_id}/memories")
+def get_memories(citizen_id: str, engine: SimulationEngine = Depends(get_engine)) -> list[dict]:
+    """SRS §25 — curated significant life events (first job, marriage,
+    birth of a child, business failure, death of a family member, ...),
+    computed on demand from the same event log the Historian Agent uses."""
+    if citizen_id not in engine.citizens:
+        raise HTTPException(status_code=404, detail=f"citizen {citizen_id} not found")
+    return memory.get_memories(engine, citizen_id)
 
 
 @router.get("/{citizen_id}/relationships")

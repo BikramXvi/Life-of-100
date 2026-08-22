@@ -79,7 +79,7 @@ def propose_and_apply_policy(engine: SimulationEngine, client: GeminiAgentClient
         )
         return {"approved": False, "proposal": proposal, "reason": result.reason}
 
-    engine.emit(
+    accepted_event = engine.emit(
         EventType.AI_DECISION_ACCEPTED,
         source_entity="government_agent",
         source_type="ai_agent",
@@ -89,6 +89,11 @@ def propose_and_apply_policy(engine: SimulationEngine, client: GeminiAgentClient
         EventType.POLICY_CHANGED,
         source_entity="government",
         source_type="government",
-        payload={"policy": proposal["action"], "value": proposal["value"], "rationale": proposal["rationale"]},
+        payload={
+            "policy": proposal["action"],
+            "value": proposal["value"],
+            "rationale": proposal["rationale"],
+            "caused_by": accepted_event.event_id,
+        },
     )
     return {"approved": True, "proposal": proposal, "reason": result.reason, "event_id": applied_event.event_id}

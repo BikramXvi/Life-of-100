@@ -80,17 +80,19 @@ def propose_and_apply_business_action(
         )
         return {"approved": False, "proposal": proposal, "reason": result.reason}
 
-    engine.emit(
+    accepted_event = engine.emit(
         EventType.AI_DECISION_ACCEPTED,
         source_entity="business_agent",
         source_type="ai_agent",
         payload={"proposal": proposal, "reason": result.reason, "proposed_event_id": proposed_event.event_id},
     )
-    applied = _apply_business_action(engine, business, proposal)
+    applied = _apply_business_action(engine, business, proposal, caused_by=accepted_event.event_id)
     return {"approved": True, "proposal": proposal, "reason": result.reason, "event_ids": [e.event_id for e in applied]}
 
 
-def _apply_business_action(engine: SimulationEngine, business, proposal: dict[str, Any]) -> list[Event]:
+def _apply_business_action(
+    engine: SimulationEngine, business, proposal: dict[str, Any], caused_by: str | None = None
+) -> list[Event]:
     action = proposal["action"]
     amount = proposal["amount"]
     events: list[Event] = []
@@ -112,6 +114,7 @@ def _apply_business_action(engine: SimulationEngine, business, proposal: dict[st
                         "business_id": business.business_id,
                         "occupation": business.industry,
                         "salary": round(base_salary, 2),
+                        "caused_by": caused_by,
                     },
                 )
             )
@@ -125,7 +128,11 @@ def _apply_business_action(engine: SimulationEngine, business, proposal: dict[st
                     EventType.JOB_LOST,
                     source_entity=citizen_id,
                     source_type="citizen",
-                    payload={"business_id": business.business_id, "reason": "business_agent_decision"},
+                    payload={
+                        "business_id": business.business_id,
+                        "reason": "business_agent_decision",
+                        "caused_by": caused_by,
+                    },
                 )
             )
     elif action == "expand":
@@ -134,7 +141,7 @@ def _apply_business_action(engine: SimulationEngine, business, proposal: dict[st
                 EventType.BUSINESS_EXPANDED,
                 source_entity=business.business_id,
                 source_type="business",
-                payload={"amount": amount},
+                payload={"amount": amount, "caused_by": caused_by},
             )
         )
     elif action == "contract":
@@ -143,7 +150,12 @@ def _apply_business_action(engine: SimulationEngine, business, proposal: dict[st
                 EventType.BUSINESS_CONTRACTED,
                 source_entity=business.business_id,
                 source_type="business",
-                payload={"reason": "business_agent_decision", "damage_fraction": amount, "allow_failure": False},
+                payload={
+                    "reason": "business_agent_decision",
+                    "damage_fraction": amount,
+                    "allow_failure": False,
+                    "caused_by": caused_by,
+                },
             )
         )
     elif action == "take_loan":
@@ -152,7 +164,7 @@ def _apply_business_action(engine: SimulationEngine, business, proposal: dict[st
                 EventType.LOAN_CREATED,
                 source_entity=business.business_id,
                 source_type="business",
-                payload={"amount": amount, "interest_rate": engine.government.interest_rate},
+                payload={"amount": amount, "interest_rate": engine.government.interest_rate, "caused_by": caused_by},
             )
         )
 

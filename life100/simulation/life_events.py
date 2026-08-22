@@ -53,11 +53,22 @@ def _consider_deaths(engine: SimulationEngine, rng: random.Random) -> None:
         health_factor = 1.0 + (1.0 - citizen.health_score)
         chance = DEATH_BASE_CHANCE_PER_TICK * age_factor * health_factor
         if rng.random() < chance:
+            # Record family ties as they stood at the moment of death — the
+            # event is the immutable historical fact; engine.py's handler
+            # clears the surviving spouse's live spouse_id afterward, so
+            # relying on later state here would lose the connection
+            # (simulation/memory.py depends on this snapshot).
             engine.emit(
                 EventType.CITIZEN_DIED,
                 source_entity=citizen.citizen_id,
                 source_type="citizen",
-                payload={"age": citizen.age, "cause": "natural causes"},
+                payload={
+                    "age": citizen.age,
+                    "cause": "natural causes",
+                    "spouse_id": citizen.spouse_id,
+                    "parent_ids": list(citizen.parent_ids),
+                    "children_ids": list(citizen.children_ids),
+                },
             )
 
 
