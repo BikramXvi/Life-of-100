@@ -9,7 +9,17 @@ load_dotenv()
 
 from fastapi import FastAPI  # noqa: E402 — must follow load_dotenv()
 
-from life100.api.routers import ai, businesses, citizens, disasters, events, observability, simulation, warehouse  # noqa: E402
+from life100.api.routers import (  # noqa: E402
+    ai,
+    businesses,
+    citizens,
+    disasters,
+    events,
+    observability,
+    simulation,
+    warehouse,
+    world,
+)
 
 app = FastAPI(
     title="LIFE/100 API",
@@ -28,6 +38,7 @@ app.include_router(disasters.router)
 app.include_router(ai.router)
 app.include_router(warehouse.router)
 app.include_router(observability.router)
+app.include_router(world.router)
 
 
 @app.get("/health", tags=["meta"])

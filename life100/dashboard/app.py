@@ -70,10 +70,54 @@ if status is None:
     st.info("Start a simulation from the sidebar to begin (or the API isn't reachable yet).")
     st.stop()
 
-tabs = st.tabs(["City Dashboard", "Citizens", "Households", "Businesses", "Events & Causality", "AI Agents", "Alternate Timelines"])
+tabs = st.tabs(
+    ["World View", "City Dashboard", "Citizens", "Households", "Businesses", "Events & Causality", "AI Agents", "Alternate Timelines"]
+)
+
+# -- World View (SRS §30.1) ------------------------------------------------
+ZONE_COLORS = {
+    "residential": "#d9f2d9",
+    "commercial": "#cfe3ff",
+    "industrial": "#f5d6b3",
+    "park": "#a6d9a6",
+    "road": "#d8d8d8",
+}
+BUILDING_ICONS = {
+    "home": "🏠",
+    "school": "🏫",
+    "hospital": "🏥",
+    "shop": "🏪",
+    "factory": "🏭",
+    "bank": "🏦",
+    "government": "🏛",
+}
+
+with tabs[0]:
+    world = api_get("/world")
+    zone_kind = {(z["x"], z["y"]): z["kind"] for z in world["zones"]}
+    building_icon = {(b["x"], b["y"]): BUILDING_ICONS.get(b["kind"], "?") for b in world["buildings"]}
+
+    rows_html = []
+    for y in range(world["height"]):
+        cells = []
+        for x in range(world["width"]):
+            color = ZONE_COLORS.get(zone_kind.get((x, y), "road"), "#eee")
+            icon = building_icon.get((x, y), "")
+            cells.append(
+                f'<td style="background:{color};width:28px;height:28px;text-align:center;'
+                f'font-size:14px;border:1px solid #ffffff33;">{icon}</td>'
+            )
+        rows_html.append(f"<tr>{''.join(cells)}</tr>")
+    st.markdown(
+        f'<table style="border-collapse:collapse">{"".join(rows_html)}</table>',
+        unsafe_allow_html=True,
+    )
+    legend = " &nbsp; ".join(f'<span style="background:{c};padding:2px 6px">{k}</span>' for k, c in ZONE_COLORS.items())
+    st.markdown(legend, unsafe_allow_html=True)
+    st.caption(f"{world['city_id']} — seed {world['seed']} — {world['width']}x{world['height']} grid")
 
 # -- City Dashboard (SRS §30.5) ------------------------------------------
-with tabs[0]:
+with tabs[1]:
     cols = st.columns(5)
     cols[0].metric("Tick", status["tick"])
     cols[1].metric("Food price index", status["food_price_index"])
@@ -98,7 +142,7 @@ with tabs[0]:
     st.json(status["policies"] or {"food_subsidy": 0, "tax_rate": 0.15, "interest_rate": 0.05})
 
 # -- Citizens (SRS §30.2) -------------------------------------------------
-with tabs[1]:
+with tabs[2]:
     citizens_df = pd.DataFrame(api_get("/citizens"))
     st.dataframe(
         citizens_df[["citizen_id", "name", "age", "occupation", "employer_id", "salary", "savings", "stress"]],
@@ -121,7 +165,7 @@ with tabs[1]:
     st.dataframe(pd.DataFrame(api_get(f"/citizens/{selected_citizen}/timeline")), use_container_width=True, height=200)
 
 # -- Households (SRS §30.3) ----------------------------------------------
-with tabs[2]:
+with tabs[3]:
     households = {c["household_id"] for c in citizens_df.to_dict(orient="records") if c.get("household_id")}
     rows = []
     for hh_id in sorted(households):
@@ -139,13 +183,13 @@ with tabs[2]:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, height=300)
 
 # -- Businesses (SRS §30.4) -----------------------------------------------
-with tabs[3]:
+with tabs[4]:
     businesses_df = pd.DataFrame(api_get("/businesses"))
     st.dataframe(businesses_df, use_container_width=True, height=300)
     employer_ids = sorted(businesses_df["business_id"].tolist()) if len(businesses_df) else []
 
 # -- Events & Causality (SRS §30.6, §22-23) -------------------------------
-with tabs[4]:
+with tabs[5]:
     events_df = pd.DataFrame(api_get("/events", limit=200))
     st.dataframe(events_df, use_container_width=True, height=300)
 
@@ -161,7 +205,7 @@ with tabs[4]:
             st.dataframe(pd.DataFrame(api_get(f"/events/{event_id}/effects")), use_container_width=True)
 
 # -- AI Agents (SRS §30.7) -------------------------------------------------
-with tabs[5]:
+with tabs[6]:
     hist_col, gov_col = st.columns(2)
     with hist_col:
         st.markdown("**Historian Agent**")
@@ -197,7 +241,7 @@ with tabs[5]:
             st.caption("No businesses with current employees to select yet.")
 
 # -- Alternate Timelines (SRS §27-29) -------------------------------------
-with tabs[6]:
+with tabs[7]:
     st.markdown("**Branch the current simulation**")
     new_id = st.text_input("New simulation_id", value=f"{status['simulation_id']}_branch")
     if st.button("🌿 Branch"):

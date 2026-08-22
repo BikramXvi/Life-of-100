@@ -61,6 +61,11 @@ def test_full_demo_flow_without_external_infra():
     assert reproducibility.status_code == 200
     assert reproducibility.json()["seed"] == 847291
 
+    world = client.get("/world").json()
+    assert world["seed"] == 847291
+    assert len(world["zones"]) == world["width"] * world["height"]
+    assert any(b["kind"] == "home" for b in world["buildings"])
+
 
 def test_endpoints_require_a_started_simulation():
     # A process-wide singleton means this depends on test order in this
