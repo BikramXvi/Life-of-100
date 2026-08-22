@@ -35,9 +35,10 @@ than a list of deliberate exclusions.
 - **Counterfactual branching, timeline comparison, butterfly-effect tracing** (§27-29): deep-copy
   branching, per-branch metrics, divergent-event lists, reusing the causal-chain endpoints for
   butterfly-effect tracing rather than a second mechanism.
-- **Dashboard** (§30-32): City Dashboard, Citizens (+ memories + relationships + timeline),
-  Households, Businesses, Events & Causality (with a trace lookup), all four AI agents, Alternate
-  Timelines (branch/compare/activate) — all as thin calls to the FastAPI layer.
+- **Dashboard** (§30-32): World View (a real rendered zone/building grid, not just tables), City
+  Dashboard, Citizens (+ memories + relationships + timeline), Households, Businesses, Events &
+  Causality (with a trace lookup), all four AI agents, Alternate Timelines (branch/compare/
+  activate) — all as thin calls to the FastAPI layer.
 - **Observability & reproducibility** (§33, §35-36): `/observability/metrics` (ticks/sec, CPU/mem,
   active counts), `/simulation/reproducibility` (seed, config, versions, agent config).
 
@@ -67,9 +68,8 @@ apply) is identical regardless of provider; `agents/base.py` isolates the SDK ca
 
 | Gap | Why | What it would take |
 |---|---|---|
-| Postgres schema depth | 5 tables (citizens/households/businesses/events/simulation_state) vs. SRS §17's ~17-table wishlist | The event log (`events` table) is the real durable record; the rest are current-state projections. Splitting out dedicated `assets`/`debts`/`health_records`/etc. tables is schema work, not new capability. |
+| Postgres schema depth | 9 tables now (citizens/households/businesses/events/simulation_state/relationships/government/infrastructure/agents) vs. SRS §17's full wishlist — missing dedicated `assets`/`debts`/`health_records`/`education` tables specifically | The event log is the real durable record and citizen fields already carry this data; splitting it into normalized tables is schema work, not new capability, at this point. |
 | k8s, secret managers | Not needed to demonstrate the required capability | Docker Compose + `.env` is the pragmatic floor for this project's scale. |
-| World View as a literal 2D map render | Dashboard shows City/Citizen/Household/Business data as tables/metrics, not a rendered grid | `world.zones`/`world.buildings` already carry (x, y) coordinates; a Streamlit `st.pydeck_chart` or simple matplotlib grid would consume them directly. |
 | Full 1-tick-per-hour granularity | 1 tick = 1 simulated day (SRS §9 specifies hourly) | Would need a full daily-routine scheduler (wake/commute/work/lunch/shop/sleep as sub-tick phases) rather than one decision pass per day. |
 
 ## Fixed since the last pass
