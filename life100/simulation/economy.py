@@ -95,19 +95,36 @@ def _average_household_stress(engine: SimulationEngine) -> float:
     return sum(h.financial_stress for h in households) / len(households)
 
 
+STRESS_ATTRIBUTION_THRESHOLD = 0.5  # above this, elevated stress is still a plausible lingering cause
+
+
 def _primary_cause_event_id(engine: SimulationEngine, business) -> str | None:
-    """Explainability (SRS §22-23): if a disaster is active that plausibly
-    drove this business's distress, cite its real DISASTER_STARTED
-    event_id rather than leaving the JOB_LOST/BUSINESS_FAILED event
-    unexplained. Only ever cites a real event actually in the log."""
+    """Explainability (SRS §22-23): if a disaster plausibly drove this
+    business's distress, cite its real DISASTER_STARTED event_id rather
+    than leaving the JOB_LOST/BUSINESS_FAILED event unexplained. Only ever
+    cites a real event actually in the log.
+
+    Deliberately not limited to food-industry businesses during
+    drought/food_shortage, and not limited to the disaster's officially
+    "active" window: `demand_multiplier` (below) is driven by average
+    household financial stress, which decays slowly (economy.py's
+    `_update_households`) — so a non-food business can fail well after a
+    drought has formally ended, purely because stress from it hasn't faded
+    yet. That lagged contagion is still a real, explainable consequence of
+    the same disaster, not a mystery, so this falls back to
+    `engine.last_disaster_event_id` (kept even after the disaster ends)
+    whenever stress is still elevated enough to plausibly be the reason.
+    """
     if business.industry in FOOD_INDUSTRIES:
         for name in ("drought", "food_shortage"):
             info = engine.active_disasters.get(name)
             if info:
                 return info.get("event_id")
-    for info in engine.active_disasters.values():
-        if info.get("kind") in ("broad_cost_shock", "broad_demand_shock"):
-            return info.get("event_id")
+    if engine.active_disasters:
+        oldest = min(engine.active_disasters.values(), key=lambda info: info["started_tick"])
+        return oldest.get("event_id")
+    if engine.last_disaster_event_id and _average_household_stress(engine) >= STRESS_ATTRIBUTION_THRESHOLD:
+        return engine.last_disaster_event_id
     return None
 
 

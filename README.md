@@ -181,6 +181,9 @@ no live API traffic runs during `pytest`; the walkthrough above is how to exerci
 - `SRS.md` — the full original specification (all 46 sections).
 - `ROADMAP.md` — the full 30-milestone plan.
 - `SCOPE.md` — **the current, honest gap analysis against the full spec.**
+- `PROOF.md` — **the three things that actually matter: it isn't scripted, complex behavior
+  emerges from simple rules, and the system supports real experimental comparison of possible
+  futures — each backed by a durable, re-runnable test with real numbers, not a narrated claim.**
 - `CLAUDE.md` — standing development rules (event-sourcing discipline, AI safety boundary,
   determinism, session workflow).
 - `PROGRESS.md` / `WORKING_NOTES.md` — build log and task-level decisions made along the way.

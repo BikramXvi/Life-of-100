@@ -48,6 +48,13 @@ class SimulationEngine:
         # only through emitted events (see economy.py, disasters.py).
         self.food_price_index = 1.0
         self.active_disasters: dict[str, dict] = {}
+        # Kept even after a disaster ends (unlike active_disasters, which is
+        # popped on DISASTER_ENDED): household financial_stress decays slowly,
+        # so demand-driven contagion (economy.py's demand_multiplier) can
+        # still be unfolding well after the disaster is no longer "active".
+        # Explainability needs to keep citing a real cause for that lagged
+        # effect, not just for the active window (SRS §22-23).
+        self.last_disaster_event_id: str | None = None
         self.policies: dict[str, float] = {}
         self.government = Government()
         self.resources = Resources()
@@ -406,6 +413,7 @@ def _apply_disaster_started(engine: SimulationEngine, event: Event) -> None:
         "magnitude": event.payload.get("magnitude", 0.0),
         "event_id": event.event_id,  # explainability: lets downstream events cite the real trigger
     }
+    engine.last_disaster_event_id = event.event_id
 
 
 def _apply_disaster_ended(engine: SimulationEngine, event: Event) -> None:
