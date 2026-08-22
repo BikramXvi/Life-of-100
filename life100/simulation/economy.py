@@ -25,6 +25,14 @@ BASE_REVENUE_PER_EMPLOYEE = 300.0
 BASE_COST_PER_EMPLOYEE = 100.0
 BASE_HOUSEHOLD_COST_PER_MEMBER = 40.0
 
+# `Citizen.salary`/`BASE_SALARY` (business.py) are monthly figures (matches
+# the SRS's own NPR-salary examples) but one tick = one simulated day
+# (SCOPE.md). Dividing by this converts salary into the daily flow the
+# per-tick business/household budget arithmetic below actually needs —
+# without it every business is insolvent from tick 1 regardless of the
+# economy, since a month's salary would be charged as a single day's cost.
+SALARY_PERIOD_DAYS = 30
+
 
 def run_tick(engine: SimulationEngine) -> None:
     engine.tick += 1
@@ -82,12 +90,12 @@ def _update_businesses(engine: SimulationEngine) -> None:
         headcount = business.headcount()
         cost_multiplier = engine.food_price_index if business.industry in FOOD_INDUSTRIES else 1.0
 
-        business.revenue = round(headcount * BASE_REVENUE_PER_EMPLOYEE * demand_multiplier, 2)
-        business.expenses = round(
+        daily_salaries = (
             sum(engine.citizens[cid].salary for cid in business.employee_ids if cid in engine.citizens)
-            + headcount * BASE_COST_PER_EMPLOYEE * cost_multiplier,
-            2,
+            / SALARY_PERIOD_DAYS
         )
+        business.revenue = round(headcount * BASE_REVENUE_PER_EMPLOYEE * demand_multiplier, 2)
+        business.expenses = round(daily_salaries + headcount * BASE_COST_PER_EMPLOYEE * cost_multiplier, 2)
         business.profit = round(business.revenue - business.expenses, 2)
         business.cash = round(business.cash + business.profit, 2)
 
@@ -121,7 +129,7 @@ def _update_households(engine: SimulationEngine) -> None:
         members = [engine.citizens[cid] for cid in household.member_ids if cid in engine.citizens]
         if not members:
             continue
-        income = sum(m.salary for m in members)
+        income = sum(m.salary for m in members) / SALARY_PERIOD_DAYS
         effective_price = max(engine.food_price_index - subsidy, 0.3)
         expenses = round(BASE_HOUSEHOLD_COST_PER_MEMBER * len(members) * effective_price, 2)
 

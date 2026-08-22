@@ -88,7 +88,13 @@ def generate_businesses(seed: int, world: World, citizens: list[Citizen]) -> lis
             business_id=next_id(),
             industry=industry,
             building_id=building.building_id,
-            cash=round(rng.uniform(10_000, 60_000), 2),
+            # Small-business-scale cash reserves (this is a ~100-citizen
+            # society, not an industrial economy) -- thin enough that a
+            # sustained drought can plausibly push a business under within
+            # its ~20-tick duration, without wiping out every business at
+            # once. See economy.py's SALARY_PERIOD_DAYS note for the related
+            # per-tick calibration fix.
+            cash=round(rng.uniform(1_500, 6_000), 2),
             inventory=round(rng.uniform(500, 2000), 2),
         )
         hire(business, industry)
@@ -100,7 +106,7 @@ def generate_businesses(seed: int, world: World, citizens: list[Citizen]) -> lis
             business_id=next_id(),
             industry=industry,
             building_id=building.building_id,
-            cash=round(rng.uniform(5_000, 30_000), 2),
+            cash=round(rng.uniform(800, 4_000), 2),
             inventory=round(rng.uniform(200, 1000), 2),
         )
         hire(business, industry)

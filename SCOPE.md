@@ -25,7 +25,7 @@ a 2-day deadline — not scope creep and not silent drift from the spec.
 
 | Cut | Reason | Future path |
 |---|---|---|
-| Snowflake | No account provisioned in the 2-day window | DuckDB stand-in reads the same event/Postgres data; swapping in real Snowflake is a warehouse-layer change only |
+| Snowflake | Credentials became available mid-build, but the warehouse/database/schema aren't provisioned inside Snowflake yet, and there wasn't time left to set that up and wire in a second writer | DuckDB stand-in reads the same event/Postgres data; swapping in real Snowflake is a warehouse-layer change only — point `warehouse/duckdb_pipeline.py`'s write target at Snowflake using `snowflake-connector-python` once a warehouse/database/schema exist |
 | Business Agent, Household Decision Agent | Time; Government + Historian already demonstrate the two core AI-infra patterns (constrained proposal, grounded explanation) | `agents/base.py` is a shared framework — adding either agent follows the same ~1-file pattern as Government/Historian |
 | Alternate timelines / branching, timeline comparison | Out of scope for this submission's tracks | Full ROADMAP Phase 12 (Steps 29) |
 | Causal-graph visualization, life replay UI | Out of scope for this submission's tracks | Full ROADMAP Phase 11 (Steps 27-28) |

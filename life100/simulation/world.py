@@ -31,8 +31,12 @@ class WorldConfig:
     """
 
     seed: int
-    width: int = 40
-    height: int = 40
+    # Sized so zone counts stay proportional to a ~100-citizen population —
+    # a 40x40 grid at these ratios produces ~480 businesses for ~100
+    # citizens, which is incoherent for a small-society sim; 12x12 keeps
+    # businesses in the low tens, matching the working-age population.
+    width: int = 12
+    height: int = 12
     residential_ratio: float = 0.45
     commercial_ratio: float = 0.20
     industrial_ratio: float = 0.10

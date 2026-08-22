@@ -25,14 +25,40 @@ certificate submission — this file tracks the day-to-day task list within that
 - [ ] `docker-compose.yml` (Postgres + Redpanda only, for this phase) + `life100/streaming/consumer.py`
 
 ### Day 2 task list
-- [ ] `life100/warehouse/duckdb_pipeline.py` — fact_events/dim_citizen/dim_date (Snowflake stand-in)
-- [ ] `life100/agents/base.py` — Gemini client wrapper (`google-genai`), retry/backoff on 429
-- [ ] `life100/agents/government.py`, `life100/agents/historian.py`, `life100/agents/validator.py` + mocked-LLM tests
-- [ ] `life100/api/main.py` + routers (simulation, citizens, events, disasters, ai)
-- [ ] `docker/Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.dashboard`; full `docker-compose.yml`; smoke test
-- [ ] `life100/dashboard/app.py` — thin Streamlit UI calling the FastAPI endpoints
+- [x] `life100/warehouse/duckdb_pipeline.py` — fact_events/dim_citizen/dim_date (Snowflake stand-in)
+- [x] `life100/agents/base.py` — Gemini client wrapper (`google-genai`), retry/backoff on 429
+- [x] `life100/agents/government.py`, `life100/agents/historian.py`, `life100/agents/validator.py` + mocked-LLM tests
+- [x] `life100/api/main.py` + routers (simulation, citizens, events, disasters, ai, warehouse)
+- [x] `docker/Dockerfile.api`, `Dockerfile.worker`, `Dockerfile.dashboard`; full `docker-compose.yml`; smoke test — **all 5 containers healthy, full end-to-end flow verified live** (see below)
+- [x] `life100/dashboard/app.py` — thin Streamlit UI calling the FastAPI endpoints
 - [ ] `README.md` — setup + Raj/drought/Historian demo walkthrough
-- [ ] Final end-to-end run-through before submission
+- [ ] One final clean `docker compose down -v && up --build` + demo run for the README's numbers (Postgres volume currently has leftover events from mid-build calibration debugging)
+
+**Live smoke test results (2026-08-22, seed 847291, n=100):**
+- World-scale bug found+fixed: default 40x40 grid produced 484 businesses for
+  100 citizens — incoherent. Fixed to 12x12 -> 37 businesses.
+- Economy calibration bug found+fixed: `Citizen.salary` (a monthly figure,
+  matching SRS's own NPR examples) was being charged as a full day's expense
+  every tick, making every business insolvent from tick 1 regardless of the
+  drought. Fixed via `SALARY_PERIOD_DAYS = 30` divisor in economy.py, applied
+  to both business payroll expense and household income.
+- Business starting cash also rescaled down (small-business-scale, not
+  industrial) so a sustained drought can still plausibly push some businesses
+  under within its ~20-tick duration without wiping out the whole economy.
+- After both fixes: drought -> 20 ticks produced 22 JOB_LOST + 5
+  BUSINESS_FAILED events out of 100 citizens/37 businesses — a believable
+  partial cascade, concentrated in food-sector businesses as expected.
+- Demo citizen found: **Raj Shrestha (cit_0065)**, age 57, food_production
+  worker at biz_012, JOB_LOST at tick 12 — a clean, directly-attributable
+  hit (food business cost pressure from the drought), good for the README.
+- Government + Historian agents both tested **live against real Gemini**
+  (not mocked) via the running containers: Government proposed
+  `food_subsidy=0.35` with a grounded rationale citing the actual snapshot
+  numbers, validator approved it; Historian correctly cited the real
+  `JOB_LOST` event_id for Raj Shrestha, no fabrication.
+- Gemini model name needed correcting: `gemini-2.0-flash` -> `gemini-3.6-flash`
+  (the former was rejected as retired by the API itself, model updated
+  everywhere including `.env.example`).
 
 ### Open assumptions / decisions made along the way
 - Default seed for demo: `847291` (SRS's own example seed) — reproducible identical world.
