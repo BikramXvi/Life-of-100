@@ -4,6 +4,67 @@ Newest entries at the top. Each entry: date, SRS stage/section, what was done, w
 
 ---
 
+## 2026-08-22 — Full SRS build-out (post-submission), verified live end-to-end
+
+**Context:** After the certificate submission slice was working, the user asked to build out
+"everything mentioned in the SRS." This entry covers that full pass. See `SCOPE.md` for the
+up-to-date gap analysis (what's still simplified/missing) — most of what it originally listed as
+cut has since been implemented.
+
+**Done, roughly in build order:**
+1. **Entity depth** (SRS §6.1/6.2/6.5/6.7): full Citizen field set (financial/health/behavioral/
+   goals), Household (property/assets/goals/living_conditions), new `Government` and `Resources`
+   entities.
+2. **Social relationships** (§12): family/coworker/neighbor/friend graph + real home-building
+   assignment (a real gap found: households never had a home before this).
+3. **Decision engine** (§10-11): deterministic (not LLM) daily decisions — purchase, school,
+   job search, healthcare, loans, socializing.
+4. **Life events** (§6.3): birth, death, marriage (with household merge), divorce (with household
+   split) — the last four event types that were defined since day 1 but never emitted.
+5. **Full disaster system** (§26): flood, earthquake, disease outbreak, economic recession, food
+   shortage, energy crisis, generalized via `broad_cost_shock`/`broad_demand_shock` multipliers.
+   Two real rule-4 violations caught and fixed here (disasters mutating state directly instead of
+   through an event handler).
+6. **Business Agent + Household Decision Agent** (§20.2-20.3): the last two of the four spec'd AI
+   agents, completing the agent roster.
+7. **Explainability/causality/memory** (§22-25): explicit `caused_by` links (never inferred),
+   `GET /events/{id}/causes|effects`, curated per-citizen memories. Found and fixed a real bug:
+   `CITIZEN_DIED` needed to snapshot family ties at time of death, since the engine clears a
+   widow(er)'s live `spouse_id` right after.
+8. **Alternate history** (§27-29): `branch_simulation()` (deep-copy based), `compare_simulations()`,
+   reusing the causal-chain endpoints for butterfly-effect tracing instead of building a second
+   mechanism. `AppState` generalized to a multi-simulation registry (backward-compatible property).
+9. **Dashboard depth + businesses endpoint** (§30-32): 7-tab Streamlit UI covering every SRS §30
+   view; added the missing `GET /businesses`.
+10. **Observability + reproducibility** (§33, §35-36): `/observability/metrics`,
+    `/simulation/reproducibility`.
+11. **Real Snowflake** (§18-19): `warehouse/snowflake_pipeline.py`, using the user's own
+    ACCOUNTADMIN credentials — creates the warehouse/database/schema on first use (XSMALL,
+    auto-suspend 60s) and **verified live**: loaded 2500+ real events from Postgres into the
+    user's actual Snowflake account via `POST /warehouse/build-snowflake`. Kept alongside (not
+    replacing) the DuckDB path, which stays the default/test-covered one.
+
+**Two real calibration/scale findings from a full live rebuild+replay** (world had drifted since
+the certificate-submission verification, given how much new tick-loop logic landed):
+- Confirmed the drought → cascade mechanism still produces a believable partial effect at full
+  depth: 30 ticks with 100+ citizens now generates ~2500 events across purchases, school
+  attendance, socializing, healthcare, job dynamics, resource extraction, marriages, and births —
+  a genuinely rich historical dataset, not just the original narrow drought/layoff slice.
+- Verified two branches with different Government-Agent-driven interventions (food subsidy vs.
+  none) produce measurably different household stress after 15 ticks (0.9244 vs. 0.9572) — the
+  counterfactual/timeline-comparison machinery works end-to-end with a real, not scripted,
+  divergence.
+
+**62/62 tests passing** (`uv run pytest`). Full docker-compose stack (5/5 containers) rebuilt and
+re-verified live end-to-end after all of the above.
+
+**Next:** see `SCOPE.md`'s gap table — Postgres schema depth, Alembic/k8s/secrets, a literal
+World View map render, business resurrection after failure, and hourly (vs. daily) tick
+granularity are the remaining known simplifications, in roughly that priority order if picked
+back up.
+
+---
+
 ## 2026-08-22 — Full stack complete and verified live (submission scope)
 
 **Done, on top of the entry below:**
@@ -29,7 +90,7 @@ Newest entries at the top. Each entry: date, SRS stage/section, what was done, w
 
 **Next:** final read-through of all docs for internal consistency before submission (due
 2026-08-24); optionally wire up real Snowflake if there's time left (credentials are in `.env`,
-warehouse/database/schema not yet provisioned — see `SCOPE.md`).
+warehouse/database/schema not yet provisioned — see `SCOPE.md`). **[Done in the entry above.]**
 
 ---
 
@@ -75,10 +136,10 @@ not the full 30-milestone roadmap. See `SCOPE.md` for exactly what's in/out of s
 
 **Next:**
 - Postgres models (`life100/db/models.py`) + `session.py` — citizens/households/businesses/events/
-  simulation_state tables.
+  simulation_state tables. **[Done]**
 - `docker-compose.yml` bringing up Postgres + Redpanda; `life100/streaming/consumer.py` — a Kafka
-  consumer that idempotently upserts events into Postgres.
+  consumer that idempotently upserts events into Postgres. **[Done]**
 - Then Day 2: DuckDB warehouse pipeline, Government + Historian Gemini agents + validator, FastAPI
-  app, Dockerfiles, thin Streamlit dashboard, README/demo script.
+  app, Dockerfiles, thin Streamlit dashboard, README/demo script. **[Done]**
 - **Assumption to confirm later:** 1 tick = 1 simulated day for this submission (SRS's own "1
-  tick = 1 hour" granularity is simplified — see `SCOPE.md`).
+  tick = 1 hour" granularity is simplified — see `SCOPE.md`). **[Still the case — see SCOPE.md]**

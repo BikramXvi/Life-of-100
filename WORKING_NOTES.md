@@ -1,8 +1,23 @@
 # WORKING_NOTES.md — Current Task Breakdown
 
 Referenced by `CLAUDE.md` and `ROADMAP.md` as the place to track the current stage's task
-breakdown and open decisions. See `SCOPE.md` for what's in/out of scope for the 2026-08-24
-certificate submission — this file tracks the day-to-day task list within that scope.
+breakdown and open decisions. See `SCOPE.md` for the up-to-date gap analysis against the full
+SRS — most of what this file's earlier "Day 2" section scoped out has since been built.
+
+---
+
+## Post-submission: full SRS build-out (2026-08-22)
+
+All of §6, §7, §10-29, §30-33, §35-36 implemented and verified live (62/62 tests, full
+docker-compose stack, real Gemini calls, real Snowflake account). See `PROGRESS.md`'s top entry
+for the detailed list and `SCOPE.md` for what's still simplified.
+
+**Remaining, in priority order (from SCOPE.md's gap table):**
+- [ ] Expand Postgres schema toward SRS §17's full table list (currently 5 tables + the event log)
+- [ ] Alembic migrations
+- [ ] World View as an actual rendered 2D map (coordinates already exist on `world.zones`/`buildings`)
+- [ ] Business resurrection after failure (a loan currently doesn't reactivate `active=False`)
+- [ ] Hourly (not daily) tick granularity, if full sub-day routines are ever wanted
 
 ---
 
