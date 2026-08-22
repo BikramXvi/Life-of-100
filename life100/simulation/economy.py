@@ -17,6 +17,8 @@ Household/Business.
 
 from __future__ import annotations
 
+import time
+
 from life100.events.schemas import EventType
 from life100.simulation import decisions, life_events
 from life100.simulation.engine import SimulationEngine
@@ -43,6 +45,7 @@ SALARY_PERIOD_DAYS = 30
 
 def run_tick(engine: SimulationEngine) -> None:
     engine.tick += 1
+    engine.tick_timestamps.append(time.time())
     _expire_disasters(engine)
     _update_food_price(engine)
     _update_businesses(engine)

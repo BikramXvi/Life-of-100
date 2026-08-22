@@ -8,6 +8,7 @@ handler table below. There is no other path to a state change.
 
 from __future__ import annotations
 
+import time
 from typing import Callable
 
 from life100.events.producer import EventProducer, InMemoryEventProducer
@@ -41,6 +42,7 @@ class SimulationEngine:
 
         self.tick = 0
         self._seq = 0
+        self.tick_timestamps: list[float] = []  # SRS §33/§36 observability: ticks/sec
 
         # Economy-wide indicators the economy/disaster modules read and write
         # only through emitted events (see economy.py, disasters.py).
@@ -56,6 +58,10 @@ class SimulationEngine:
     def _next_event_id(self) -> str:
         self._seq += 1
         return f"evt_{self.simulation_id}_{self.tick:05d}_{self._seq:04d}"
+
+    def current_simulation_time(self) -> str:
+        """Public accessor for observability/reproducibility endpoints."""
+        return self._sim_time()
 
     def _sim_time(self) -> str:
         year = self.tick // 365 + 1

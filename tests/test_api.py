@@ -53,6 +53,14 @@ def test_full_demo_flow_without_external_infra():
     timeline = client.get(f"/citizens/{citizen_id}/timeline").json()
     assert isinstance(timeline, list)
 
+    metrics = client.get("/observability/metrics")
+    assert metrics.status_code == 200
+    assert metrics.json()["events_total"] >= 0
+
+    reproducibility = client.get("/simulation/reproducibility")
+    assert reproducibility.status_code == 200
+    assert reproducibility.json()["seed"] == 847291
+
 
 def test_endpoints_require_a_started_simulation():
     # A process-wide singleton means this depends on test order in this
