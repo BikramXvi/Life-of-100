@@ -209,3 +209,48 @@ Direct response to "of everything, sensitivity-analysis tipping points is the on
 - Verified live against the real Docker stack (not just pytest): `POST /experiments/sensitivity`
   through the containerized API reproduced the identical tipping-point bracket, and the dashboard
   section renders the shaded-band charts and honest "no tipping point" captions correctly.
+
+## 2026-08-22 (same day, later still) — UI redesign: make the science impossible to miss
+
+Direct response to explicit feedback that the engineering was stronger than the interface
+communicated ("if a judge sees these screens first, they won't immediately perceive that").
+
+- `/simulation/status` extended with `unemployment_rate`, `active_businesses`,
+  `health_incidents`, `active_disasters_detail` (per-disaster magnitude) — one server-computed
+  source for the new persistent status bar instead of each tab re-deriving its own numbers.
+- New `render_status_bar()`: a single-line civilization status strip (day, population, food
+  price, unemployment, businesses, health incidents, active disaster + severity), rendered once
+  above the tabs so it's visible no matter which tab is open — the "still looking at the same
+  living world" continuity the feedback specifically called out as missing.
+- What If? Lab rebuilt around the result: controls collapsed into a `⚙ Configure experiment`
+  expander (collapsed by default once a result exists), results shown as `EXPERIMENT #N` +
+  per-world metric cards with real vs.-control deltas (`st.metric`, auto-colored), the old table/
+  chart kept as supporting detail underneath rather than the headline.
+- Sensitivity Analysis promoted out of What If? Lab into its own tab ("Where does the city
+  break?") with a computed headline verdict ("Tipping point found in X, Y — N of 6 swept metrics
+  show a genuine break" or an honest "No tipping point found anywhere in this range").
+- World View gained a real causal drill-down: "Why is this business failing?" — pick a failed
+  business, see its actual causal chain (root cause → ... → failure) rendered as a vertical arrow
+  diagram (`render_causal_chain()`, shared with Events & Causality), plus a real count of layoff
+  events/affected employees. Nothing here is invented — it walks the same `trace_causes` data
+  already used elsewhere.
+- Events & Causality's trace tool now shows that same arrow-chain diagram plus a real "N direct
+  effects touching M entities" summary, instead of two bare side-by-side dataframes.
+- AI Agents given a light "Decision Room" framing (explicitly NOT a full rebuild, per the
+  feedback's own prioritization): one-line pipeline explanation + a compact live status recap +
+  each panel stating what it currently sees before proposing.
+- Added a second tagline — "A civilization small enough to understand. Complex enough to surprise
+  you." — under the existing "Only 100 people. Every life matters," per explicit feedback to keep
+  the original and lean into it rather than replace it.
+- Deliberately no decoration/gradient/neon restyle — same dark theme throughout; every change is
+  information hierarchy, matching the feedback's explicit "less decoration, more information
+  hierarchy... don't build a prettier dashboard."
+- **84 passed, 2 skipped** (`uv run pytest -q`) — `tests/test_api.py` extended with assertions on
+  the new status fields.
+- Verified live against the real Docker stack for every changed screen: status bar renders on
+  World View/What If Lab/Sensitivity Analysis; the World View causal drill-down correctly found
+  `biz_001`'s real failure chain (`Disaster Started → Job Lost`, "6 layoff event(s)... affecting 6
+  employee(s)"); the What If Lab hero cards rendered real deltas per world; the Sensitivity tab's
+  headline verdict correctly reported a genuinely different tipping point
+  (`unemployment_rate`, severity 0.292–0.300) on a different branch state than the earlier
+  business_failures finding — reinforcing it's a live computation, not a cached result.

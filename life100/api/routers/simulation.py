@@ -16,6 +16,7 @@ from life100.api.state import state
 from life100.db import crud
 from life100.db.session import init_db, make_engine, make_session_factory
 from life100.events.producer import InMemoryEventProducer, KafkaEventProducer
+from life100.events.schemas import EventType
 from life100.simulation.alternate_history import branch_simulation, compare_simulations
 from life100.simulation.economy import run_tick
 from life100.simulation.engine import SimulationEngine
@@ -80,14 +81,34 @@ def start_simulation(payload: StartRequest) -> dict:
 
 @router.get("/status")
 def simulation_status(engine: SimulationEngine = Depends(get_engine)) -> dict:
+    """The single source for the dashboard's persistent civilization status
+    bar (Level 1: "what is happening?") -- one call, computed here once,
+    rather than every tab re-deriving unemployment/health-incident counts
+    from raw citizens/events on its own."""
+    working_age = [c for c in engine.citizens.values() if c.is_working_age()]
+    unemployed = [c for c in working_age if c.occupation == "unemployed"]
+    health_incidents = len(engine.log.of_type(EventType.MEDICAL_VISIT)) + len(
+        engine.log.of_type(EventType.HEALTH_IMPACTED)
+    )
     return {
         "simulation_id": engine.simulation_id,
         "tick": engine.tick,
         "food_price_index": round(engine.food_price_index, 4),
         "active_disasters": sorted(engine.active_disasters.keys()),
+        "active_disasters_detail": {
+            name: {
+                "magnitude": info.get("magnitude"),
+                "started_tick": info.get("started_tick"),
+                "duration_ticks": info.get("duration_ticks"),
+            }
+            for name, info in engine.active_disasters.items()
+        },
         "policies": dict(engine.policies),
         "population": len(engine.citizens),
         "events_logged": len(engine.log),
+        "unemployment_rate": round(len(unemployed) / len(working_age), 4) if working_age else 0.0,
+        "active_businesses": sum(1 for b in engine.businesses.values() if b.active),
+        "health_incidents": health_incidents,
     }
 
 

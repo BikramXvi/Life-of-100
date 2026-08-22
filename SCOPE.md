@@ -178,6 +178,46 @@ not a new UI decoration:
   for every severity in the swept range, erasing the very differentiation the sweep exists to
   find — the same saturation issue documented earlier for the drought-severity unit test.
 
+## Added since the last pass: a UI redesign around the science, not the forms
+
+Direct response to explicit feedback: "the underlying system is much stronger than what these
+screenshots communicate... don't build a prettier dashboard, build a UI that makes the science
+impossible to miss." Concretely:
+
+- **A persistent civilization status bar** (`render_status_bar()`), rendered once above the tabs
+  so it stays visible no matter which tab is open: day, population, food price, unemployment,
+  active businesses, health incidents, and any active disaster with its severity. Backed by a
+  richer `/simulation/status` (now also returns `unemployment_rate`, `active_businesses`,
+  `health_incidents`, `active_disasters_detail` with each disaster's magnitude) so this is one
+  server-computed source of truth, not four tabs each re-deriving the same numbers.
+- **What If? Lab redesigned around the result, not the controls**: the scenario/policy sliders
+  now live in a collapsed-by-default `⚙ Configure experiment` expander; the result is a row of
+  world "cards" (`st.metric` with real vs.-control deltas, colored red/green automatically) under
+  an `EXPERIMENT #N` counter, with the comparison chart and full metrics table now supporting
+  detail rather than the headline.
+- **Sensitivity Analysis promoted to its own tab** ("Where does the city break?") instead of
+  living under What If? Lab's controls — with a headline verdict line ("Tipping point found in
+  X, Y — N of 6 swept metrics show a genuine break" / "No tipping point found anywhere in this
+  range") computed from the real per-metric results, not just per-chart captions.
+- **World View gained a real causal drill-down**: "Why is this business failing?" lets you pick
+  any failed business and renders its actual causal chain (root cause → ... → failure) as a
+  vertical arrow diagram, plus an honest count of real layoff events/affected employees — reusing
+  the existing `trace_causes` endpoint, never inventing a step.
+- **Events & Causality's trace tool** now renders the same arrow-chain visual (root cause first)
+  alongside a real "N direct downstream effects, touching M entities" summary, instead of two
+  bare dataframes side by side.
+- **AI Agents given a light "Decision Room" framing** (not a full rebuild, per explicit
+  deprioritization): a one-line pipeline explanation (propose → validate → accept/reject →
+  apply) plus a compact live status recap, and each agent panel now states what it currently
+  sees (food price, active disasters) before proposing — still functional-first, not restyled
+  into a chatbot.
+- **Branding leaned into harder**: added "A civilization small enough to understand. Complex
+  enough to surprise you." under the existing "Only 100 people. Every life matters." tagline,
+  per explicit feedback to keep the original and lean into the philosophy, not replace it.
+- Deliberately did NOT add decoration, gradients, or a "flashy AI startup" restyle — the existing
+  dark theme was kept as-is; every change here is information hierarchy (status bar, hero cards,
+  causal diagrams), not visual polish for its own sake.
+
 ## Explicitly out of scope (matches SRS §45's own list, not a cut)
 
 Multiple cities, inter-city trade, political elections, cultural evolution, reinforcement

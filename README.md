@@ -161,12 +161,15 @@ curl -X POST localhost:8000/warehouse/build            # DuckDB (default)
 curl -X POST localhost:8000/warehouse/build-snowflake   # real Snowflake, if SNOWFLAKE_* is set
 ```
 
-**9. Or just use the dashboard** at http://localhost:8501 — 9 tabs: World View (3D city render),
-City Dashboard, **What If? Lab** (branch the live city into a Control plus several intervention
-worlds and compare real measured outcomes side by side, plus a **Sensitivity Analysis** section
-that sweeps drought severity and locates a genuine tipping point in business failures, not a
-manufactured one), Citizens, Households, Businesses, Events & Causality, AI Agents, and Alternate
-Timelines.
+**9. Or just use the dashboard** at http://localhost:8501 — a persistent status bar (day,
+population, food price, unemployment, businesses, health incidents, active disaster + severity)
+stays visible across all 10 tabs so it always reads as one living world: World View (3D city
+render, plus a real "why is this business failing?" causal drill-down), City Dashboard,
+**What If? Lab** (branch the live city into a Control plus several intervention worlds, results
+shown as headline metric cards with real deltas, not a bare form), **Sensitivity Analysis** (its
+own tab — sweeps drought severity and reports a computed headline verdict on where, if anywhere,
+a genuine tipping point was found), Citizens, Households, Businesses, Events & Causality (now with
+a visual root-cause-to-effect arrow diagram), AI Agents, and Alternate Timelines.
 
 ## Tests
 

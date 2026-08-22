@@ -35,9 +35,39 @@ def api_post(path: str, payload: dict | None = None) -> requests.Response:
     return requests.post(f"{API_BASE_URL}{path}", json=payload or {}, timeout=60)
 
 
+_CAUSE_LINK_KEYS = ("caused_by", "caused_by_disaster_event_id", "proposed_event_id")
+
+
+def render_causal_chain(events_root_first: list[dict]) -> None:
+    """Renders a real causal chain (root cause first, target event last) as
+    a vertical arrow diagram -- "why did this happen?" made visible, not
+    just a raw events table. Every box is an actual, recorded event; no
+    inferred or invented step is ever drawn."""
+    for i, e in enumerate(events_root_first):
+        label = e["event_type"].replace("_", " ").title()
+        payload = e.get("payload") or {}
+        detail = ", ".join(
+            f"{k}={v}" for k, v in payload.items() if k not in _CAUSE_LINK_KEYS and not isinstance(v, (dict, list))
+        )
+        st.markdown(
+            f'<div style="border:1px solid #3a3a40;border-radius:6px;padding:8px 12px;'
+            f'margin:2px 0;background:#1a1a1e">'
+            f'<b>{label}</b><br>'
+            f'<span style="font-size:11px;color:#999">day {e.get("simulation_tick", "?")} · {detail[:140]}</span>'
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        if i < len(events_root_first) - 1:
+            st.markdown(
+                '<div style="text-align:center;color:#e0655a;font-size:18px;line-height:1.1">↓</div>',
+                unsafe_allow_html=True,
+            )
+
+
 st.set_page_config(page_title="LIFE/100", layout="wide")
 st.title("LIFE/100")
 st.caption("Only 100 people. Every life matters.")
+st.caption("A civilization small enough to understand. Complex enough to surprise you.")
 
 DISASTER_ENDPOINTS = {
     "Drought": "/disasters/drought",
@@ -79,8 +109,65 @@ if status is None:
     st.info("Start a simulation from the sidebar to begin (or the API isn't reachable yet).")
     st.stop()
 
+
+def render_status_bar(status: dict) -> None:
+    """A persistent, single-line civilization status strip -- rendered once,
+    above the tabs, so it stays visible no matter which tab is open. The
+    point: moving between Citizens / What If / Sensitivity should still
+    feel like looking at the same living world, not nine disconnected
+    pages (Level 1 of the UI's own hierarchy -- "what is happening?")."""
+    st.markdown(
+        """
+        <style>
+        .lf100-status-bar {
+            display: flex; flex-wrap: wrap; gap: 4px 20px; align-items: center;
+            border-top: 1px solid #333; border-bottom: 1px solid #333;
+            padding: 9px 2px; margin: 2px 0 16px 0; font-size: 13.5px; color: #cfcfd4;
+        }
+        .lf100-seg { white-space: nowrap; }
+        .lf100-seg b { color: #f0f0f2; }
+        .lf100-alert { color: #e0655a; font-weight: 600; }
+        .lf100-calm { color: #6ee08a; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    segments = [
+        f'<span class="lf100-seg"><b>DAY {status["tick"]}</b></span>',
+        f'<span class="lf100-seg">👥 {status["population"]}</span>',
+        f'<span class="lf100-seg">💰 food {status["food_price_index"]:.2f}</span>',
+        f'<span class="lf100-seg">💼 unemployment {status.get("unemployment_rate", 0.0) * 100:.1f}%</span>',
+        f'<span class="lf100-seg">🏢 {status.get("active_businesses", "—")} businesses</span>',
+        f'<span class="lf100-seg">❤ {status.get("health_incidents", 0)} health incidents</span>',
+    ]
+    disasters = status.get("active_disasters_detail") or {}
+    if disasters:
+        parts = []
+        for name, info in disasters.items():
+            mag = info.get("magnitude")
+            mag_txt = f" (severity {mag:.2f})" if isinstance(mag, (int, float)) and mag else ""
+            parts.append(f"{name.replace('_', ' ').upper()}{mag_txt}")
+        segments.append(f'<span class="lf100-seg lf100-alert">⚠ {" · ".join(parts)} ACTIVE</span>')
+    else:
+        segments.append('<span class="lf100-seg lf100-calm">● no active disaster</span>')
+    st.markdown(f'<div class="lf100-status-bar">{"".join(segments)}</div>', unsafe_allow_html=True)
+
+
+render_status_bar(status)
+
 tabs = st.tabs(
-    ["World View", "City Dashboard", "What If? Lab", "Citizens", "Households", "Businesses", "Events & Causality", "AI Agents", "Alternate Timelines"]
+    [
+        "World View",
+        "City Dashboard",
+        "What If? Lab",
+        "Sensitivity Analysis",
+        "Citizens",
+        "Households",
+        "Businesses",
+        "Events & Causality",
+        "AI Agents",
+        "Alternate Timelines",
+    ]
 )
 
 # ============================================================================
@@ -262,6 +349,38 @@ with tabs[0]:
         "drag to orbit, scroll to zoom — homes tinted by their household's real financial stress"
     )
 
+    st.divider()
+    st.markdown("#### Why is this business failing?")
+    st.caption(
+        "Pick a failed business and trace the real causal chain that led to it — every arrow "
+        "below is an actual recorded event, never a guess."
+    )
+    biz_list = api_get("/businesses")
+    failed_businesses = [b for b in biz_list if not b.get("active", True)]
+    if not failed_businesses:
+        st.caption("No businesses have failed yet in this simulation — trigger a disaster and advance a few ticks.")
+    else:
+        industry_by_id = {b["business_id"]: b["industry"] for b in failed_businesses}
+        explain_biz_id = st.selectbox(
+            "Failed business",
+            list(industry_by_id),
+            format_func=lambda bid: f"{bid} ({industry_by_id[bid]})",
+            key="explain_biz",
+        )
+        if st.button("Explain this failure"):
+            recent = api_get("/events", limit=5000)
+            biz_events = [e for e in recent if (e.get("payload") or {}).get("business_id") == explain_biz_id]
+            failures = [e for e in biz_events if e["event_type"] == "BUSINESS_FAILED"]
+            layoffs = [e for e in biz_events if e["event_type"] == "JOB_LOST"]
+            anchor = failures[-1] if failures else (layoffs[-1] if layoffs else None)
+            if anchor is None:
+                st.caption("No recorded events reference this business yet.")
+            else:
+                causes = api_get(f"/events/{anchor['event_id']}/causes")
+                render_causal_chain(list(reversed(causes)))
+                affected = {e["source_entity"] for e in layoffs}
+                st.info(f"**{len(layoffs)} layoff event(s)** recorded at this business, affecting **{len(affected)} employee(s)**.")
+
 # ============================================================================
 # City Dashboard (SRS §30.5)
 # ============================================================================
@@ -359,73 +478,103 @@ with tabs[1]:
 # world — there is no lookup table.
 # ============================================================================
 with tabs[2]:
-    st.markdown("#### One city. Parallel futures.")
+    st.markdown("### One city. Three possible futures.")
     st.caption(
-        "Branches the CURRENT simulation state into several independent worlds, applies a "
-        "different intervention to each, and runs every one of them for the same number of days."
+        "We don't know what will happen — so we run the experiment. Branches the CURRENT "
+        "simulation into several independent worlds, applies a different intervention to each, "
+        "and runs every one of them for the same number of days. Every number below comes from "
+        "an actual simulation run; there is no lookup table."
     )
 
-    exp_col1, exp_col2 = st.columns(2)
-    with exp_col1:
-        st.markdown("**Scenario**")
-        exp_disaster = st.selectbox(
-            "Disaster",
-            ["drought", "food_shortage", "flood", "earthquake", "disease_outbreak", "economic_recession", "energy_crisis"],
-            key="exp_disaster",
-        )
-        exp_duration = st.slider("Duration (days)", 5, 90, 30, key="exp_duration")
-        exp_severity = st.slider(
-            "Drought severity (only applies to drought)", 0.1, 1.0, 0.4, step=0.05, key="exp_severity"
-        )
-        exp_ticks = st.slider("Days to run", 5, 90, 30, key="exp_ticks")
+    experiment = st.session_state.get("last_experiment")
+    with st.expander("⚙ Configure experiment", expanded=not experiment):
+        exp_col1, exp_col2 = st.columns(2)
+        with exp_col1:
+            st.markdown("**Scenario**")
+            exp_disaster = st.selectbox(
+                "Disaster",
+                ["drought", "food_shortage", "flood", "earthquake", "disease_outbreak", "economic_recession", "energy_crisis"],
+                key="exp_disaster",
+            )
+            exp_duration = st.slider("Duration (days)", 5, 90, 30, key="exp_duration")
+            exp_severity = st.slider(
+                "Drought severity (only applies to drought)", 0.1, 1.0, 0.4, step=0.05, key="exp_severity"
+            )
+            exp_ticks = st.slider("Days to run", 5, 90, 30, key="exp_ticks")
 
-    with exp_col2:
-        st.markdown("**Government intervention (World B)**")
-        exp_food_subsidy = st.slider("Food subsidy", 0.0, 1.0, 0.5, step=0.05, key="exp_food_subsidy")
-        exp_interest_rate = st.slider("Interest rate", 0.0, 0.3, 0.05, step=0.01, key="exp_interest_rate")
-        exp_healthcare = st.slider("Healthcare funding", 0.0, 1.0, 0.5, step=0.05, key="exp_healthcare")
-        st.markdown("**World C**")
-        st.caption("Emergency employment program (a demand stimulus, not scripted mass-hiring)")
+        with exp_col2:
+            st.markdown("**Government intervention (World B)**")
+            exp_food_subsidy = st.slider("Food subsidy", 0.0, 1.0, 0.5, step=0.05, key="exp_food_subsidy")
+            exp_interest_rate = st.slider("Interest rate", 0.0, 0.3, 0.05, step=0.01, key="exp_interest_rate")
+            exp_healthcare = st.slider("Healthcare funding", 0.0, 1.0, 0.5, step=0.05, key="exp_healthcare")
+            st.markdown("**World C**")
+            st.caption("Emergency employment program (a demand stimulus, not scripted mass-hiring)")
 
-    if st.button("▶ Run Experiment (3 parallel worlds)", type="primary"):
-        exp_request = {
-            "ticks": int(exp_ticks),
-            "scenarios": [
-                {"name": "World A — No Intervention", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
-                 "disaster_severity": float(exp_severity)},
-                {"name": "World B — Food Subsidy", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
-                 "disaster_severity": float(exp_severity),
-                 "policies": {"food_subsidy": float(exp_food_subsidy), "interest_rate": float(exp_interest_rate),
-                              "healthcare_spending": float(exp_healthcare)}},
-                {"name": "World C — Emergency Employment", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
-                 "disaster_severity": float(exp_severity), "emergency_employment": True},
-            ],
-        }
-        resp = api_post("/experiments/run", exp_request)
-        if resp.ok:
-            st.session_state["last_experiment"] = resp.json()
-        else:
-            st.error(resp.text)
+        if st.button("▶ Run Experiment (3 parallel worlds)", type="primary"):
+            exp_request = {
+                "ticks": int(exp_ticks),
+                "scenarios": [
+                    {"name": "World A — No Intervention", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
+                     "disaster_severity": float(exp_severity)},
+                    {"name": "World B — Food Subsidy", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
+                     "disaster_severity": float(exp_severity),
+                     "policies": {"food_subsidy": float(exp_food_subsidy), "interest_rate": float(exp_interest_rate),
+                                  "healthcare_spending": float(exp_healthcare)}},
+                    {"name": "World C — Emergency Employment", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
+                     "disaster_severity": float(exp_severity), "emergency_employment": True},
+                ],
+            }
+            resp = api_post("/experiments/run", exp_request)
+            if resp.ok:
+                st.session_state["experiment_counter"] = st.session_state.get("experiment_counter", 0) + 1
+                st.session_state["last_experiment"] = resp.json()
+                st.rerun()
+            else:
+                st.error(resp.text)
 
     experiment = st.session_state.get("last_experiment")
     if experiment:
+        st.markdown(f"###### EXPERIMENT #{st.session_state.get('experiment_counter', 1)}")
+
         control_metrics = experiment["control"]["metrics"]
-        rows = [{"world": "Control (no disaster)", **control_metrics}]
-        for s in experiment["scenarios"]:
-            rows.append({"world": s["name"], **s["metrics"]})
+        worlds = [{"name": "Control — No Disaster", "metrics": control_metrics, "control": True}] + [
+            {"name": s["name"], "metrics": s["metrics"], "control": False} for s in experiment["scenarios"]
+        ]
+
+        card_cols = st.columns(len(worlds))
+        for col, w in zip(card_cols, worlds):
+            m = w["metrics"]
+            with col:
+                st.markdown(f"**{w['name']}**")
+                if w["control"]:
+                    st.metric("Unemployment", f"{m['unemployment_rate'] * 100:.1f}%")
+                    st.metric("Business failures", m["business_failures"])
+                    st.metric("Health incidents", m["health_incidents"])
+                else:
+                    st.metric(
+                        "Unemployment",
+                        f"{m['unemployment_rate'] * 100:.1f}%",
+                        delta=f"{(m['unemployment_rate'] - control_metrics['unemployment_rate']) * 100:+.1f}pp",
+                        delta_color="inverse",
+                    )
+                    st.metric(
+                        "Business failures",
+                        m["business_failures"],
+                        delta=f"{m['business_failures'] - control_metrics['business_failures']:+d}",
+                        delta_color="inverse",
+                    )
+                    st.metric(
+                        "Health incidents",
+                        m["health_incidents"],
+                        delta=f"{m['health_incidents'] - control_metrics['health_incidents']:+d}",
+                        delta_color="inverse",
+                    )
+
+        rows = [{"world": w["name"], **w["metrics"]} for w in worlds]
         result_df = pd.DataFrame(rows)
 
-        st.markdown("#### Results")
-        st.dataframe(
-            result_df[
-                ["world", "food_price_index", "unemployment_rate", "employment", "business_failures",
-                 "health_incidents", "avg_household_wealth", "avg_household_stress"]
-            ],
-            use_container_width=True,
-        )
-
         chart_metrics = ["food_price_index", "unemployment_rate", "business_failures", "health_incidents"]
-        melted = result_df[result_df["world"] != "Control (no disaster)"][["world"] + chart_metrics].melt(
+        melted = result_df[result_df["world"] != "Control — No Disaster"][["world"] + chart_metrics].melt(
             id_vars="world", var_name="metric", value_name="value"
         )
         st.altair_chart(
@@ -438,11 +587,20 @@ with tabs[2]:
                 column=alt.Column("metric:N", title=None),
                 tooltip=["world", "metric", "value"],
             )
-            .properties(height=260, width=140)
+            .properties(height=240, width=140)
             .resolve_scale(y="independent"),  # each metric has its own scale -- unemployment_rate
             # (0-1) would otherwise look flat next to health_incidents (100s)
             use_container_width=False,
         )
+
+        with st.expander("Full metrics table"):
+            st.dataframe(
+                result_df[
+                    ["world", "food_price_index", "unemployment_rate", "employment", "business_failures",
+                     "health_incidents", "avg_household_wealth", "avg_household_stress"]
+                ],
+                use_container_width=True,
+            )
 
         st.markdown("#### Why did one world do better? Trace it.")
         st.caption(
@@ -459,10 +617,18 @@ with tabs[2]:
             resp = api_post(f"/simulation/activate/{chosen_world}")
             st.write(resp.json() if resp.ok else resp.text)
     else:
-        st.caption("Run an experiment to see results here.")
+        st.caption("Run an experiment to see three possible futures here.")
 
-    st.divider()
-    st.markdown("#### Sensitivity Analysis — find the tipping point")
+# ============================================================================
+# Sensitivity Analysis — the other half of "let's run the experiment": not
+# "what if we do X" but "where, exactly, does the city break?" Deliberately
+# given its own tab rather than buried under What If? Lab's controls — this
+# is the most direct proof the system isn't scripted: a genuine, checkable
+# tipping point falls out of a smooth economic rule, and metrics with no
+# real threshold are reported as smooth, not forced to show one.
+# ============================================================================
+with tabs[3]:
+    st.markdown("### Where does the city break?")
     st.caption(
         "Sweeps drought severity across a range, branches an independent world at each value "
         "from the CURRENT simulation, and looks for a point where the response changes "
@@ -470,44 +636,56 @@ with tabs[2]:
         "the range is reported as having no tipping point, never forced to show one."
     )
 
-    sens_col1, sens_col2, sens_col3 = st.columns(3)
-    with sens_col1:
-        sens_min = st.slider("Minimum severity", 0.05, 0.45, 0.05, step=0.05, key="sens_min")
-    with sens_col2:
-        sens_max = st.slider("Maximum severity", 0.1, 1.0, 0.5, step=0.05, key="sens_max")
-    with sens_col3:
-        sens_steps = st.slider("Number of steps", 4, 16, 10, key="sens_steps")
-    sens_ticks = st.slider(
-        "Days to run each branch",
-        3,
-        30,
-        15,
-        key="sens_ticks",
-        help=(
-            "Kept below 30 by default: at 30 ticks food_price_index and avg_household_stress "
-            "both saturate at their caps for every severity, hiding the very differentiation "
-            "this sweep exists to find."
-        ),
-    )
+    sensitivity = st.session_state.get("last_sensitivity")
+    with st.expander("⚙ Configure sweep", expanded=not sensitivity):
+        sens_col1, sens_col2, sens_col3 = st.columns(3)
+        with sens_col1:
+            sens_min = st.slider("Minimum severity", 0.05, 0.45, 0.05, step=0.05, key="sens_min")
+        with sens_col2:
+            sens_max = st.slider("Maximum severity", 0.1, 1.0, 0.5, step=0.05, key="sens_max")
+        with sens_col3:
+            sens_steps = st.slider("Number of steps", 4, 16, 10, key="sens_steps")
+        sens_ticks = st.slider(
+            "Days to run each branch",
+            3,
+            30,
+            15,
+            key="sens_ticks",
+            help=(
+                "Kept below 30 by default: at 30 ticks food_price_index and avg_household_stress "
+                "both saturate at their caps for every severity, hiding the very differentiation "
+                "this sweep exists to find."
+            ),
+        )
 
-    if st.button("🔬 Run Sensitivity Sweep", type="primary"):
-        if sens_max <= sens_min:
-            st.error("Maximum severity must be greater than minimum severity.")
-        else:
-            step_size = (sens_max - sens_min) / (sens_steps - 1)
-            sweep_values = [round(sens_min + i * step_size, 4) for i in range(sens_steps)]
-            resp = api_post(
-                "/experiments/sensitivity",
-                {"parameter": "drought_severity", "values": sweep_values, "ticks": int(sens_ticks)},
-            )
-            if resp.ok:
-                st.session_state["last_sensitivity"] = resp.json()
+        if st.button("🔬 Run Sensitivity Sweep", type="primary"):
+            if sens_max <= sens_min:
+                st.error("Maximum severity must be greater than minimum severity.")
             else:
-                st.error(resp.text)
+                step_size = (sens_max - sens_min) / (sens_steps - 1)
+                sweep_values = [round(sens_min + i * step_size, 4) for i in range(sens_steps)]
+                resp = api_post(
+                    "/experiments/sensitivity",
+                    {"parameter": "drought_severity", "values": sweep_values, "ticks": int(sens_ticks)},
+                )
+                if resp.ok:
+                    st.session_state["last_sensitivity"] = resp.json()
+                    st.rerun()
+                else:
+                    st.error(resp.text)
 
     sensitivity = st.session_state.get("last_sensitivity")
     if sensitivity:
+        found = [m for m, tp in sensitivity["tipping_points"].items() if tp]
         st.caption(sensitivity["methodology"])
+        if found:
+            st.markdown(
+                f"##### ⚠ Tipping point found in **{', '.join(found)}** — "
+                f"{len(found)} of {len(sensitivity['tipping_points'])} swept metrics show a genuine break."
+            )
+        else:
+            st.markdown("##### ● No tipping point found anywhere in this range — the response is smooth.")
+
         sens_df = pd.DataFrame(sensitivity["metrics_by_value"])
         sens_df.insert(0, "severity", sensitivity["values"])
 
@@ -549,7 +727,7 @@ with tabs[2]:
 # ============================================================================
 # Citizens (SRS §30.2)
 # ============================================================================
-with tabs[3]:
+with tabs[4]:
     citizens_df = pd.DataFrame(api_get("/citizens"))
     st.dataframe(
         citizens_df[["citizen_id", "name", "age", "occupation", "employer_id", "salary", "savings", "stress"]],
@@ -615,7 +793,7 @@ with tabs[3]:
 # ============================================================================
 # Households (SRS §30.3)
 # ============================================================================
-with tabs[4]:
+with tabs[5]:
     households_df = pd.DataFrame(api_get("/households"))
     households_df["members"] = households_df["member_ids"].apply(len)
     st.dataframe(
@@ -656,7 +834,7 @@ with tabs[4]:
 # ============================================================================
 # Businesses (SRS §30.4)
 # ============================================================================
-with tabs[5]:
+with tabs[6]:
     businesses_df = pd.DataFrame(api_get("/businesses"))
     st.dataframe(businesses_df, use_container_width=True, height=250)
     employer_ids = sorted(businesses_df["business_id"].tolist()) if len(businesses_df) else []
@@ -695,7 +873,7 @@ with tabs[5]:
 # ============================================================================
 # Events & Causality (SRS §30.6, §22-23)
 # ============================================================================
-with tabs[6]:
+with tabs[7]:
     events_df = pd.DataFrame(api_get("/events", limit=500))
     if len(events_df):
         ev_col1, ev_col2 = st.columns(2)
@@ -727,26 +905,65 @@ with tabs[6]:
                 use_container_width=True,
             )
 
-    st.dataframe(events_df, use_container_width=True, height=250)
+    with st.expander("Raw event log"):
+        st.dataframe(events_df, use_container_width=True, height=250)
 
-    st.markdown("**Trace a causal chain**")
+    st.markdown("#### Let's prove why it happened")
+    st.caption(
+        "Every arrow below is an explicit, recorded `caused_by` link — never an inferred or "
+        "fabricated one. If a step is missing, it's because it genuinely wasn't recorded."
+    )
     event_id = st.text_input("event_id", value=events_df["event_id"].iloc[-1] if len(events_df) else "")
-    causes_col, effects_col = st.columns(2)
     if st.button("Trace") and event_id:
-        with causes_col:
-            st.markdown("Causes (backward)")
-            st.dataframe(pd.DataFrame(api_get(f"/events/{event_id}/causes")), use_container_width=True)
+        causes = api_get(f"/events/{event_id}/causes")
+        effects = api_get(f"/events/{event_id}/effects")
+
+        chain_col, effects_col = st.columns([3, 2])
+        with chain_col:
+            st.markdown("**Causal chain (root cause → this event)**")
+            if causes:
+                render_causal_chain(list(reversed(causes)))
+            else:
+                st.caption("event not found.")
         with effects_col:
+            st.markdown("**Direct downstream effects**")
+            if effects:
+                affected = {e["source_entity"] for e in effects}
+                st.info(f"**{len(effects)} event(s)** directly caused by this one, touching **{len(affected)} entit(y/ies)**.")
+                st.dataframe(pd.DataFrame(effects)[["event_type", "simulation_tick", "source_entity"]], use_container_width=True)
+            else:
+                st.caption("Nothing has cited this event as its cause (yet) — it's a leaf in the causal graph so far.")
+
+        with st.expander("Raw causes/effects tables"):
+            st.markdown("Causes (backward)")
+            st.dataframe(pd.DataFrame(causes), use_container_width=True)
             st.markdown("Effects (forward — butterfly effect)")
-            st.dataframe(pd.DataFrame(api_get(f"/events/{event_id}/effects")), use_container_width=True)
+            st.dataframe(pd.DataFrame(effects), use_container_width=True)
 
 # ============================================================================
 # AI Agents (SRS §30.7)
 # ============================================================================
-with tabs[7]:
+with tabs[8]:
+    st.markdown("### Civilization Decision Room")
+    st.caption(
+        "These agents don't touch the city directly. Every proposal below passes through the "
+        "same pipeline: propose → validate against hard bounds → accept or reject → apply — each "
+        "step its own event in the log (see Events & Causality). An AI agent that suggests "
+        "something out of bounds gets rejected, not silently clamped."
+    )
+    st.markdown(
+        f'<div class="lf100-status-bar" style="margin-top:0">'
+        f'<span class="lf100-seg"><b>Day {status["tick"]}</b></span>'
+        f'<span class="lf100-seg">💰 food {status["food_price_index"]:.2f}</span>'
+        f'<span class="lf100-seg">💼 unemployment {status.get("unemployment_rate", 0.0) * 100:.1f}%</span>'
+        f'<span class="lf100-seg">🏢 {status.get("active_businesses", "—")} businesses</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
     hist_col, gov_col = st.columns(2)
     with hist_col:
-        st.markdown("**Historian Agent**")
+        st.markdown("**Historian Agent** — grounded in real events, never fabricated citations")
         h_citizen = st.selectbox(
             "Citizen", list(name_by_id), format_func=lambda cid: name_by_id[cid], key="hist_citizen"
         )
@@ -755,7 +972,7 @@ with tabs[7]:
             resp = api_post("/ai/historian/ask", {"citizen_id": h_citizen, "question": question})
             st.write(resp.json() if resp.ok else resp.text)
 
-        st.markdown("**Household Decision Agent**")
+        st.markdown("**Household Decision Agent** — proposes, never decides unilaterally")
         decision_context = st.text_input("Decision context", value="considering a major loan")
         if st.button("🏠 Ask Household Agent"):
             resp = api_post(
@@ -764,12 +981,13 @@ with tabs[7]:
             st.write(resp.json() if resp.ok else resp.text)
 
     with gov_col:
-        st.markdown("**Government Agent**")
+        st.markdown(f"**Government Agent** — sees: food price {status['food_price_index']:.2f}, active disasters {', '.join(status['active_disasters']) or 'none'}")
         if st.button("🏛 Propose Policy"):
             resp = api_post("/ai/government/propose")
             st.write(resp.json() if resp.ok else resp.text)
+            st.caption("→ validator checks it against ALLOWED_POLICY_ACTIONS bounds before anything applies")
 
-        st.markdown("**Business Agent**")
+        st.markdown("**Business Agent** — proposes hire/fire/loan actions, bounded by validator.py")
         if employer_ids:
             b_id = st.selectbox("Business", employer_ids)
             if st.button("🏢 Propose Business Action"):
@@ -781,7 +999,7 @@ with tabs[7]:
 # ============================================================================
 # Alternate Timelines (SRS §27-29)
 # ============================================================================
-with tabs[8]:
+with tabs[9]:
     st.markdown("**Branch the current simulation**")
     new_id = st.text_input("New simulation_id", value=f"{status['simulation_id']}_branch")
     if st.button("🌿 Branch"):

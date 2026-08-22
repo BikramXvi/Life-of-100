@@ -53,6 +53,17 @@ def test_full_demo_flow_without_external_infra():
 
     status = client.get("/simulation/status").json()
     assert status["food_price_index"] >= 1.0
+    # civilization-level status bar fields (dashboard's persistent status bar)
+    assert 0.0 <= status["unemployment_rate"] <= 1.0
+    assert status["active_businesses"] >= 0
+    assert status["health_incidents"] >= 0
+    assert isinstance(status["active_disasters_detail"], dict)
+    # the 10-tick drought triggered above has already expired by tick 15 --
+    # check the detail dict is populated *while* a disaster is still active instead
+    client.post("/disasters/flood", json={})
+    mid_status = client.get("/simulation/status").json()
+    assert "flood" in mid_status["active_disasters_detail"]
+    assert mid_status["active_disasters_detail"]["flood"]["magnitude"] is not None
 
     events = client.get("/events", params={"limit": 200}).json()
     assert len(events) > 0
