@@ -85,94 +85,182 @@ tabs = st.tabs(
 
 # ============================================================================
 # World View (SRS §30.1) — a real rendered 3D city, not a flat table.
+#
+# Buildings are rectangular extruded footprints (not lollipop columns),
+# shaded with a material/lighting model for real depth. Roads render as a
+# connected street network, not just colored tiles. Homes are tinted by
+# their household's actual financial_stress (a diverging green->red scale)
+# so the city visibly shows where hardship is concentrated — data, not
+# decoration. Every other building kind keeps a fixed color, both with a
+# small deterministic per-building tint/height jitter so the skyline reads
+# as organic rather than a uniform grid of identical blocks.
 # ============================================================================
+import hashlib
+
 ZONE_COLORS = {
-    "residential": [96, 176, 96, 140],
-    "commercial": [80, 130, 220, 140],
-    "industrial": [230, 150, 60, 140],
-    "park": [56, 138, 56, 170],
-    "road": [70, 70, 76, 120],
+    "residential": [58, 92, 62, 210],
+    "commercial": [46, 72, 108, 210],
+    "industrial": [104, 78, 52, 210],
+    "park": [40, 88, 46, 235],
+    "road": [32, 32, 36, 255],
 }
 BUILDING_STYLE = {
-    "home": {"color": [255, 205, 120], "height": 16},
-    "shop": {"color": [110, 175, 255], "height": 28},
-    "factory": {"color": [255, 130, 80], "height": 42},
-    "school": {"color": [175, 130, 255], "height": 34},
-    "hospital": {"color": [255, 90, 90], "height": 38},
-    "bank": {"color": [255, 215, 90], "height": 40},
-    "government": {"color": [235, 235, 235], "height": 52},
+    "home": {"color": [190, 165, 120], "height": 16, "half_size": 0.26},
+    "shop": {"color": [90, 150, 230], "height": 26, "half_size": 0.32},
+    "factory": {"color": [220, 120, 70], "height": 40, "half_size": 0.40},
+    "school": {"color": [160, 120, 220], "height": 32, "half_size": 0.36},
+    "hospital": {"color": [220, 80, 90], "height": 36, "half_size": 0.36},
+    "bank": {"color": [220, 180, 80], "height": 38, "half_size": 0.34},
+    "government": {"color": [220, 220, 226], "height": 50, "half_size": 0.42},
 }
+STRESS_LOW_COLOR = [86, 196, 120]  # calm households
+STRESS_HIGH_COLOR = [214, 68, 62]  # struggling households
 GRID_SCALE = 0.0012  # degrees per grid cell (~130m) -- purely a rendering trick, not real geography
+BUILDING_MATERIAL = {"ambient": 0.36, "diffuse": 0.7, "shininess": 28, "specularColor": [255, 255, 255]}
+
+
+def _stable_jitter(key: str, spread: float) -> float:
+    """Deterministic per-entity jitter (not Python's randomized str hash,
+    which would flicker every Streamlit rerun) so each building's slight
+    color/height variation stays fixed across reruns."""
+    digest = int(hashlib.md5(key.encode()).hexdigest(), 16)
+    return ((digest % 2001) / 1000.0 - 1.0) * spread
+
+
+def _lerp_color(low: list[int], high: list[int], t: float) -> list[int]:
+    t = max(0.0, min(1.0, t))
+    return [round(low[i] + (high[i] - low[i]) * t) for i in range(3)]
+
+
+def _footprint(x: float, y: float, half_size: float) -> list[list[float]]:
+    corners = ((-half_size, -half_size), (half_size, -half_size), (half_size, half_size), (-half_size, half_size))
+    return [[(x + dx) * GRID_SCALE, (y + dy) * GRID_SCALE] for dx, dy in corners]
+
 
 with tabs[0]:
     world = api_get("/world")
     width, height_dim = world["width"], world["height"]
+    stress_by_building = {
+        h["home_building_id"]: h["financial_stress"] for h in api_get("/households") if h.get("home_building_id")
+    }
 
-    zone_data = [
-        {
-            "polygon": [
-                [(z["x"] + dx) * GRID_SCALE, (z["y"] + dy) * GRID_SCALE]
-                for dx, dy in ((0, 0), (1, 0), (1, 1), (0, 1))
-            ],
-            "color": ZONE_COLORS.get(z["kind"], [90, 90, 90, 100]),
-        }
-        for z in world["zones"]
-    ]
-    building_data = [
-        {
-            "position": [(b["x"] + 0.5) * GRID_SCALE, (b["y"] + 0.5) * GRID_SCALE],
-            "color": BUILDING_STYLE.get(b["kind"], {"color": [200, 200, 200]})["color"],
-            "elevation": BUILDING_STYLE.get(b["kind"], {"height": 20})["height"],
-            "kind": b["kind"],
-            "building_id": b["building_id"],
-        }
-        for b in world["buildings"]
-    ]
+    zone_data = []
+    for z in world["zones"]:
+        base = ZONE_COLORS.get(z["kind"], [90, 90, 90, 200])
+        jitter = _stable_jitter(f"zone_{z['x']}_{z['y']}", 10)
+        color = [max(0, min(255, c + jitter)) for c in base[:3]] + [base[3]]
+        elevation = 3 if z["kind"] == "park" else 0
+        zone_data.append(
+            {
+                "polygon": _footprint(z["x"] + 0.5, z["y"] + 0.5, 0.5),
+                "color": color,
+                "elevation": elevation,
+            }
+        )
+
+    road_cells = {(z["x"], z["y"]) for z in world["zones"] if z["kind"] == "road"}
+    road_segments = []
+    for x, y in road_cells:
+        cx, cy = (x + 0.5) * GRID_SCALE, (y + 0.5) * GRID_SCALE
+        for nx, ny in ((x + 1, y), (x, y + 1)):
+            if (nx, ny) in road_cells:
+                road_segments.append(
+                    {"source": [cx, cy], "target": [(nx + 0.5) * GRID_SCALE, (ny + 0.5) * GRID_SCALE]}
+                )
+
+    building_data = []
+    for b in world["buildings"]:
+        style = BUILDING_STYLE.get(b["kind"], {"color": [200, 200, 200], "height": 20, "half_size": 0.3})
+        if b["kind"] == "home" and b["building_id"] in stress_by_building:
+            color = _lerp_color(STRESS_LOW_COLOR, STRESS_HIGH_COLOR, stress_by_building[b["building_id"]])
+        else:
+            jitter = _stable_jitter(b["building_id"] + "c", 14)
+            color = [max(0, min(255, c + jitter)) for c in style["color"]]
+        height_jitter = _stable_jitter(b["building_id"] + "h", style["height"] * 0.18)
+        building_data.append(
+            {
+                "polygon": _footprint(b["x"] + 0.5, b["y"] + 0.5, style["half_size"]),
+                "color": color,
+                "elevation": max(6, style["height"] + height_jitter),
+                "kind": b["kind"],
+                "building_id": b["building_id"],
+                "stress": (
+                    round(stress_by_building[b["building_id"]], 3)
+                    if b["building_id"] in stress_by_building
+                    else ("vacant" if b["kind"] == "home" else "n/a")
+                ),
+            }
+        )
 
     ground_layer = pdk.Layer(
         "PolygonLayer",
         zone_data,
         get_polygon="polygon",
         get_fill_color="color",
+        get_elevation="elevation",
+        extruded=True,
         stroked=False,
         filled=True,
         pickable=False,
     )
+    road_layer = pdk.Layer(
+        "LineLayer",
+        road_segments,
+        get_source_position="source",
+        get_target_position="target",
+        get_color=[150, 150, 140, 160],
+        get_width=3,
+        width_min_pixels=1,
+    )
     building_layer = pdk.Layer(
-        "ColumnLayer",
+        "PolygonLayer",
         building_data,
-        get_position="position",
+        get_polygon="polygon",
         get_fill_color="color",
         get_elevation="elevation",
-        radius=32,
-        elevation_scale=1,
+        extruded=True,
+        wireframe=True,
+        get_line_color=[20, 20, 20, 120],
+        material=BUILDING_MATERIAL,
         pickable=True,
         auto_highlight=True,
+        highlight_color=[255, 255, 255, 90],
     )
     view_state = pdk.ViewState(
         longitude=(width / 2) * GRID_SCALE,
         latitude=(height_dim / 2) * GRID_SCALE,
-        zoom=16.3,
-        pitch=52,
-        bearing=24,
+        zoom=14.85,
+        pitch=55,
+        bearing=28,
     )
     deck = pdk.Deck(
-        layers=[ground_layer, building_layer],
+        layers=[ground_layer, road_layer, building_layer],
         initial_view_state=view_state,
         map_provider=None,
-        tooltip={"text": "{kind}\n{building_id}"},
+        tooltip={"text": "{kind}\n{building_id}\nhousehold stress: {stress}"},
     )
-    st.pydeck_chart(deck, height=560)
+    st.pydeck_chart(deck, height=580)
 
-    legend_items = {**ZONE_COLORS, **{k: v["color"] for k, v in BUILDING_STYLE.items()}}
-    legend_cols = st.columns(len(legend_items))
-    for col, (label, color) in zip(legend_cols, legend_items.items()):
+    legend_cols = st.columns(len(ZONE_COLORS) + len(BUILDING_STYLE) + 1)
+    legend_items = [(k, v) for k, v in ZONE_COLORS.items()] + [
+        (k, v["color"]) for k, v in BUILDING_STYLE.items() if k != "home"
+    ]
+    for col, (label, color) in zip(legend_cols, legend_items):
         col.markdown(
             f'<div style="background:rgba({color[0]},{color[1]},{color[2]},0.9);'
             f'padding:3px 6px;border-radius:3px;font-size:11px;text-align:center">{label}</div>',
             unsafe_allow_html=True,
         )
-    st.caption(f"{world['city_id']} — seed {world['seed']} — {width}x{height_dim} grid — drag to orbit, scroll to zoom")
+    legend_cols[-1].markdown(
+        f'<div style="background:linear-gradient(90deg, rgb({STRESS_LOW_COLOR[0]},{STRESS_LOW_COLOR[1]},{STRESS_LOW_COLOR[2]}), '
+        f'rgb({STRESS_HIGH_COLOR[0]},{STRESS_HIGH_COLOR[1]},{STRESS_HIGH_COLOR[2]}));'
+        f'padding:3px 6px;border-radius:3px;font-size:11px;text-align:center;color:#111">home = stress</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"{world['city_id']} — seed {world['seed']} — {width}x{height_dim} grid — "
+        "drag to orbit, scroll to zoom — homes tinted by their household's real financial stress"
+    )
 
 # ============================================================================
 # City Dashboard (SRS §30.5)
@@ -331,22 +419,16 @@ with tabs[2]:
 # Households (SRS §30.3)
 # ============================================================================
 with tabs[3]:
-    households = {c["household_id"] for c in citizens_df.to_dict(orient="records") if c.get("household_id")}
-    rows = []
-    for hh_id in sorted(households):
-        members = citizens_df[citizens_df["household_id"] == hh_id]
-        rows.append(
-            {
-                "household_id": hh_id,
-                "members": len(members),
-                "total_income": members["salary"].sum(),
-                "total_savings": members["savings"].sum(),
-                "total_debt": members["debt"].sum(),
-                "avg_stress": round(members["stress"].mean(), 3),
-            }
-        )
-    households_df = pd.DataFrame(rows)
-    st.dataframe(households_df, use_container_width=True, height=250)
+    households_df = pd.DataFrame(api_get("/households"))
+    households_df["members"] = households_df["member_ids"].apply(len)
+    st.dataframe(
+        households_df[
+            ["household_id", "members", "home_building_id", "property_value", "income", "expenses",
+             "savings", "debt", "financial_stress", "living_conditions"]
+        ],
+        use_container_width=True,
+        height=250,
+    )
 
     hh_col1, hh_col2 = st.columns(2)
     with hh_col1:
@@ -354,10 +436,10 @@ with tabs[3]:
             alt.Chart(households_df)
             .mark_circle(size=90, color="#e08a5a", opacity=0.75)
             .encode(
-                x=alt.X("total_savings:Q", title="Total household savings"),
-                y=alt.Y("avg_stress:Q", title="Average financial stress"),
+                x=alt.X("savings:Q", title="Household savings"),
+                y=alt.Y("financial_stress:Q", title="Financial stress"),
                 size=alt.Size("members:Q", title="Members"),
-                tooltip=["household_id", "members", "total_savings", "avg_stress"],
+                tooltip=["household_id", "members", "savings", "financial_stress"],
             )
             .properties(height=260, title="Savings vs. stress (bubble size = household size)"),
             use_container_width=True,
@@ -367,7 +449,7 @@ with tabs[3]:
             alt.Chart(households_df)
             .mark_bar(color="#5ae0c0")
             .encode(
-                x=alt.X("avg_stress:Q", bin=alt.Bin(maxbins=15), title="Average financial stress"),
+                x=alt.X("financial_stress:Q", bin=alt.Bin(maxbins=15), title="Financial stress"),
                 y=alt.Y("count():Q", title="Households"),
             )
             .properties(height=260, title="Household stress distribution"),

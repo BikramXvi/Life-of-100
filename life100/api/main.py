@@ -16,6 +16,7 @@ from life100.api.routers import (  # noqa: E402
     citizens,
     disasters,
     events,
+    households,
     observability,
     simulation,
     warehouse,
@@ -34,6 +35,7 @@ app = FastAPI(
 app.include_router(simulation.router)
 app.include_router(citizens.router)
 app.include_router(businesses.router)
+app.include_router(households.router)
 app.include_router(events.router)
 app.include_router(disasters.router)
 app.include_router(ai.router)

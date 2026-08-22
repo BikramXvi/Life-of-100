@@ -37,6 +37,13 @@ def test_full_demo_flow_without_external_infra():
     assert client.get(f"/businesses/{business_id}").status_code == 200
     assert client.get("/businesses/does_not_exist").status_code == 404
 
+    households = client.get("/households").json()
+    assert len(households) > 0
+    assert all(h["home_building_id"] for h in households)
+    household_id = households[0]["household_id"]
+    assert client.get(f"/households/{household_id}").status_code == 200
+    assert client.get("/households/does_not_exist").status_code == 404
+
     drought_resp = client.post("/disasters/drought", json={"duration_ticks": 10})
     assert drought_resp.status_code == 200
 

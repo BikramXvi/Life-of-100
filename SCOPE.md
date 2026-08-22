@@ -35,9 +35,13 @@ than a list of deliberate exclusions.
 - **Counterfactual branching, timeline comparison, butterfly-effect tracing** (§27-29): deep-copy
   branching, per-branch metrics, divergent-event lists, reusing the causal-chain endpoints for
   butterfly-effect tracing rather than a second mechanism.
-- **Dashboard** (§30-32): World View is a real interactive 3D city render (pydeck/deck.gl —
-  colored zone tiles + extruded, color-coded buildings, drag-to-orbit/scroll-to-zoom), not a flat
-  table. Every other tab has real statistical charts (Altair) driving the data, not just raw
+- **Dashboard** (§30-32): World View is a real interactive 3D city render (pydeck/deck.gl) —
+  rectangular extruded buildings (not lollipop columns) with per-kind footprint/height, PBR-ish
+  material shading, a connected street network (not just colored road tiles), and homes tinted
+  by a green→red gradient reflecting their household's *real* `financial_stress` (data, not
+  decoration) — plus a deterministic per-building color/height jitter so the skyline reads as
+  organic rather than a uniform grid. Drag to orbit, scroll to zoom, hover for details. Every
+  other tab has real statistical charts (Altair) driving the data, not just raw
   tables/JSON: City Dashboard has time-series trend lines (food price, population, employment,
   event volume) reconstructed from the event log; Citizens has age/wealth histograms and an
   occupation breakdown; Households has a savings-vs-stress bubble chart; Businesses has an
