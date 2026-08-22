@@ -113,6 +113,73 @@ def _apply_business_failed(engine: SimulationEngine, event: Event) -> None:
         business.active = False
 
 
+def _apply_purchase(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    if citizen is None:
+        return
+    citizen.savings = round(citizen.savings - float(event.payload["amount"]), 2)
+
+
+def _apply_school_attended(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    if citizen is None:
+        return
+    citizen.academic_performance = round(min(1.0, citizen.academic_performance + 0.01), 3)
+
+
+def _apply_medical_visit(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    if citizen is None:
+        return
+    citizen.savings = round(citizen.savings - float(event.payload["cost"]), 2)
+    citizen.health_score = round(min(1.0, citizen.health_score + 0.08), 3)
+    citizen.stress = round(max(0.0, citizen.stress - 0.05), 3)
+    citizen.healthcare_visits += 1
+    citizen.medical_history.append(event.payload.get("reason", "checkup"))
+
+
+def _apply_loan_created(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    if citizen is None:
+        return
+    amount = float(event.payload["amount"])
+    citizen.savings = round(citizen.savings + amount, 2)
+    citizen.debt = round(citizen.debt + amount, 2)
+
+
+def _apply_loan_repaid(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    if citizen is None:
+        return
+    amount = float(event.payload["amount"])
+    citizen.savings = round(citizen.savings - amount, 2)
+    citizen.debt = round(max(0.0, citizen.debt - amount), 2)
+
+
+def _apply_job_started(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    business = engine.businesses.get(event.payload["business_id"])
+    if citizen is None or business is None:
+        return
+    citizen.occupation = event.payload["occupation"]
+    citizen.employer_id = business.business_id
+    citizen.salary = float(event.payload["salary"])
+    citizen.employment_history.append(f"hired:{business.business_id}")
+    if citizen.citizen_id not in business.employee_ids:
+        business.employee_ids.append(citizen.citizen_id)
+
+
+def _apply_relationship_changed(engine: SimulationEngine, event: Event) -> None:
+    a_id, b_id = event.payload["citizen_id"], event.payload["other_id"]
+    delta = float(event.payload.get("strength_delta", 0.0))
+    for a, b in ((a_id, b_id), (b_id, a_id)):
+        for rel in engine.relationships.get(a, []):
+            if rel.other_id == b:
+                rel.strength = round(min(1.0, max(0.0, rel.strength + delta)), 3)
+                rel.last_interaction_tick = engine.tick
+                rel.history.append(f"interaction@tick{engine.tick}")
+
+
 def _apply_price_changed(engine: SimulationEngine, event: Event) -> None:
     if event.payload.get("good") == "food":
         engine.food_price_index = float(event.payload["new_index"])
@@ -152,6 +219,14 @@ _HANDLERS: dict[EventType, Callable[[SimulationEngine, Event], None]] = {
     EventType.DISASTER_STARTED: _apply_disaster_started,
     EventType.DISASTER_ENDED: _apply_disaster_ended,
     EventType.POLICY_CHANGED: _apply_policy_changed,
+    EventType.PURCHASE: _apply_purchase,
+    EventType.SCHOOL_ATTENDED: _apply_school_attended,
+    EventType.MEDICAL_VISIT: _apply_medical_visit,
+    EventType.LOAN_CREATED: _apply_loan_created,
+    EventType.LOAN_REPAID: _apply_loan_repaid,
+    EventType.JOB_STARTED: _apply_job_started,
+    EventType.RELATIONSHIP_CHANGED: _apply_relationship_changed,
+    EventType.RESOURCE_EXTRACTED: _noop,
     EventType.AI_DECISION_PROPOSED: _noop,
     EventType.AI_DECISION_ACCEPTED: _noop,
     EventType.AI_DECISION_REJECTED: _noop,
