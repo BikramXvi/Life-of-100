@@ -282,3 +282,49 @@ direction and staying understated; chose the latter explicitly, plus "no emojis.
 - Verified live end to end: status bar renders correctly with all 6 segments and no emoji; What
   If Lab's hero cards show monospace values + the new muted palette in the comparison chart;
   Sensitivity Analysis's verdict renders as a clean bordered box, not an emoji heading.
+
+## 2026-08-22 (same day, later still) — the full "living instrument" UI redesign
+
+Direct response to a 19-point redesign brief: the dashboard must read as "I can intervene in this
+city, observe what happens, and investigate why" — not "a Streamlit app with nine tabs."
+
+- **Four-mode IA**: `CITY` (World/Overview/Economy/Health), `EXPERIMENT` (What If?/Find the
+  Breaking Point/Alternate Histories), `INVESTIGATE` (Why Did This Happen?/Decision Room),
+  `PEOPLE` (Citizens/Households/Businesses) — nested `st.tabs`, replacing the old flat 10-tab list.
+- **Landing gate** ("Enter the City" / "Run Guided Demo") replacing the old always-visible
+  sidebar-control wall; sidebar reduced to a collapsed "Advanced Controls" expander.
+- **Primary time controls moved into CITY > Overview**: `+1 Day`/`+5 Days`/`+30 Days` buttons plus
+  a live "what just happened" event feed built from the real events that specific advance produced
+  (verified live: real `Job Lost`/`Business Failed`/`Price Changed` rows appeared after a real
+  30-day advance).
+- **Real map click-to-panel**: `pydeck_chart(..., on_select="rerun", selection_mode="single-object")`
+  — clicking a building opens a context card with its real business cash/employees/status or
+  household stress, plus a "Why?" button reusing the existing causal-chain trace. Verified live:
+  clicking a factory correctly opened `bld_0091 / Food Production / Cash 3692.71 / Employees 5 /
+  STABLE`.
+- **Per-citizen "Explain my story"** (PEOPLE > Citizens): calls the Historian agent, shows a real
+  evidence-grounded indicator instead of a fabricated confidence score. Verified live including the
+  honest zero-history case.
+- **Real timeline visualization** for Alternate Histories: `/simulation/list` extended to expose
+  each branch's already-recorded `parent_simulation_id`/`branch_point_tick` (`branch_info` existed
+  on the engine but was never surfaced by the API); rendered as an Altair bar+fork-tick chart.
+- **A scripted-presentation, unscripted-simulation Guided Demo**: 8-step linear walkthrough (Day 0
+  → drought → real price rise → real business pressure → a real citizen's real Historian-explained
+  story → a real 3-world experiment → a real sensitivity sweep → a discovery screen using whatever
+  the sweep actually found). Only narration pacing is pre-written; every number is a live API call
+  made at that step. Verified live end to end, including the honest "no tipping point was found"
+  fallback ending.
+- **Real bug found and fixed**: running `/experiments/run` from a simulation with an already-active
+  disaster failed with "A drought is already active" and failed *silently* in the dashboard (no
+  error shown) — each scenario branch inherits the base state's active disasters. Fixed identically
+  to the existing `sensitivity.py` fix (end the branch's own copy via a real `DISASTER_ENDED`
+  event first). Added `test_running_an_experiment_from_a_simulation_already_mid_disaster_does_not_raise`
+  plus error surfacing in the dashboard so this class of failure is never silent again.
+- **Known, disclosed limitation**: the Sensitivity tab's chart-click "Why?" drill-down did not
+  reliably register the click selection in live testing (Altair `selection_point`/`on_select`) —
+  everything else on that tab works correctly; this one embellishment is a harmless no-op, not
+  removed, documented rather than hidden.
+- **85 passed, 2 skipped** (`uv run pytest -q`).
+- Verified live via a full Docker rebuild, covering every new feature: landing screen, 4-mode nav,
+  map click-to-panel, Overview's day-stepper + event feed, Alternate Histories branch metadata,
+  Citizens' Explain My Story, and the complete 8-step Guided Demo through to its discovery screen.

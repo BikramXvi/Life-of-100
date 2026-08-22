@@ -37,6 +37,7 @@ def compute_metrics_timeseries(engine: SimulationEngine) -> list[dict]:
     pop_delta: dict[int, int] = defaultdict(int)
     emp_delta: dict[int, int] = defaultdict(int)
     biz_delta: dict[int, int] = defaultdict(int)
+    health_delta: dict[int, int] = defaultdict(int)
     price_by_tick: dict[int, float] = {}
 
     for event in events:
@@ -54,6 +55,8 @@ def compute_metrics_timeseries(engine: SimulationEngine) -> list[dict]:
             biz_delta[event.simulation_tick] += 1
         elif event.event_type == EventType.PRICE_CHANGED and event.payload.get("good") == "food":
             price_by_tick[event.simulation_tick] = float(event.payload["new_index"])
+        elif event.event_type in (EventType.MEDICAL_VISIT, EventType.HEALTH_IMPACTED):
+            health_delta[event.simulation_tick] += 1
 
     baseline_population = current_population - sum(pop_delta.values())
     baseline_employed = current_employed - sum(emp_delta.values())
@@ -65,13 +68,16 @@ def compute_metrics_timeseries(engine: SimulationEngine) -> list[dict]:
         baseline_businesses,
         1.0,
     )
+    health_incidents_cumulative = 0
     series = []
     for tick in range(max_tick + 1):
         population += pop_delta.get(tick, 0)
         employed += emp_delta.get(tick, 0)
         active_businesses += biz_delta.get(tick, 0)
+        health_incidents_cumulative += health_delta.get(tick, 0)
         if tick in price_by_tick:
             price = price_by_tick[tick]
+        working_age_estimate = max(population, 1)
         series.append(
             {
                 "tick": tick,
@@ -79,6 +85,10 @@ def compute_metrics_timeseries(engine: SimulationEngine) -> list[dict]:
                 "employed": employed,
                 "active_businesses": active_businesses,
                 "food_price_index": round(price, 4),
+                "health_incidents": health_incidents_cumulative,
+                # a rough proxy (not every citizen is working-age) -- good
+                # enough for a trend line, not presented as an exact rate
+                "unemployment_proxy": round(1.0 - employed / working_age_estimate, 4),
             }
         )
     return series

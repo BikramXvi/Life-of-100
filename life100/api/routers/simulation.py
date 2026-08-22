@@ -160,10 +160,21 @@ def activate(simulation_id: str) -> dict:
 
 @router.get("/list")
 def list_simulations() -> dict:
+    def _branch_info(eng: SimulationEngine) -> dict | None:
+        info = getattr(eng, "branch_info", None)
+        if info is None:
+            return None
+        return {"parent_simulation_id": info.parent_simulation_id, "branch_point_tick": info.branch_point_tick}
+
     return {
         "active_simulation_id": state.active_simulation_id,
         "simulations": [
-            {"simulation_id": sim_id, "tick": eng.tick, "population": len(eng.citizens)}
+            {
+                "simulation_id": sim_id,
+                "tick": eng.tick,
+                "population": len(eng.citizens),
+                "branch_info": _branch_info(eng),
+            }
             for sim_id, eng in state.simulations.items()
         ],
     }

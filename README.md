@@ -161,15 +161,28 @@ curl -X POST localhost:8000/warehouse/build            # DuckDB (default)
 curl -X POST localhost:8000/warehouse/build-snowflake   # real Snowflake, if SNOWFLAKE_* is set
 ```
 
-**9. Or just use the dashboard** at http://localhost:8501 — a persistent status bar (day,
-population, food price, unemployment, businesses, health incidents, active disaster + severity)
-stays visible across all 10 tabs so it always reads as one living world: World View (3D city
-render, plus a real "why is this business failing?" causal drill-down), City Dashboard,
-**What If? Lab** (branch the live city into a Control plus several intervention worlds, results
-shown as headline metric cards with real deltas, not a bare form), **Sensitivity Analysis** (its
-own tab — sweeps drought severity and reports a computed headline verdict on where, if anywhere,
-a genuine tipping point was found), Citizens, Households, Businesses, Events & Causality (now with
-a visual root-cause-to-effect arrow diagram), AI Agents, and Alternate Timelines.
+**9. Or just use the dashboard** at http://localhost:8501. Opens to a landing screen (the city's
+current day/population and two buttons — **Enter the City** or **Run Guided Demo**, a scripted
+8-step walkthrough where every number shown is a real, live API call). Once inside, a persistent
+status bar (day, population, food price, unemployment, businesses, health incidents, active
+disaster) stays visible everywhere, and navigation is four modes, not a flat tab list:
+
+- **CITY** — World (3D city render; click any building for a real context panel showing its
+  cash/employees/status, plus a "Why?" causal drill-down for at-risk businesses), Overview (the
+  primary `+1 Day`/`+5 Days`/`+30 Days` time controls plus a live "what just happened" event feed),
+  Economy, Health.
+- **EXPERIMENT** — What If? (branch the live city into a Control plus intervention worlds, results
+  as headline metric cards with real deltas), Find the Breaking Point (sweeps drought severity,
+  reports a computed tipping-point verdict), Alternate Histories (branch/compare timelines, with a
+  real fork-point timeline chart).
+- **INVESTIGATE** — Why Did This Happen? (causal-chain arrow diagrams from real recorded
+  `caused_by` links), Decision Room (the four AI agents, each proposal passing propose → validate
+  → accept/reject → apply).
+- **PEOPLE** — Citizens (including a per-citizen "Explain my story" button, evidence-grounded via
+  the Historian agent), Households, Businesses.
+
+Advanced/raw controls (seed, population, custom tick counts) live in a collapsed "Advanced
+Controls" sidebar expander rather than cluttering the main surface.
 
 ## Tests
 

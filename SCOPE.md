@@ -241,6 +241,64 @@ typography, spacing, borders, chart polish, no glow/gradients/neon, and no emoji
   building color palette (already deliberate/verified), or add any gradient/glow/border-radius
   beyond what already existed.
 
+## Added since the last pass: the full "living instrument" UI redesign
+
+Direct response to an extensive redesign brief: the judge-facing surface must read as "I can
+intervene in this city, observe what happens, and investigate why" — not "here are nine tabs."
+
+- **A four-mode information architecture** replaces the flat tab list: `CITY` (World, Overview,
+  Economy, Health) — what is happening; `EXPERIMENT` (What If?, Find the Breaking Point,
+  Alternate Histories) — what if we change one thing; `INVESTIGATE` (Why Did This Happen?,
+  Decision Room) — why did it happen; `PEOPLE` (Citizens, Households, Businesses) — who this is
+  happening to. Implemented as nested `st.tabs`, matching the mockup's own two-level nav exactly.
+- **A landing gate**: opening the dashboard shows only the city's current day/population/
+  households/businesses and two buttons — "Enter the City" or "Run Guided Demo" — no setup wall.
+  The old sidebar controls (seed, population, raw tick count, disaster picker) moved into a
+  collapsed "Advanced Controls" expander; the primary day-advance/disaster controls now live in
+  `CITY > Overview` as `+1 Day` / `+5 Days` / `+30 Days` buttons plus a live "what just happened"
+  event feed built from the real events that specific advance produced.
+- **Real map click-to-panel**: clicking any building in the World View 3D map (via `pydeck_chart`'s
+  `on_select="rerun"`/`selection_mode="single-object"`, confirmed supported by the installed
+  Streamlit 1.62/pydeck 0.9.3) opens a context panel with that business's real cash/employees/
+  status, or that household's real financial stress — plus a "Why?" button reusing the existing
+  causal-chain trace for any at-risk business. Verified live: clicking a factory building
+  correctly opened `bld_0091 / Food Production / Cash 3692.71 / Employees 5 / STATUS: STABLE`.
+- **A per-citizen "Explain my story"** button (PEOPLE > Citizens) calls the Historian agent with a
+  canned "tell this citizen's story" question and shows a real evidence-grounded indicator (N
+  cited events of M considered) instead of a fabricated confidence score — verified live including
+  the honest case where a citizen has no history yet ("There are no recorded events...", 0 of 0).
+- **A real timeline visualization** for Alternate Histories: `/simulation/list` was extended to
+  expose each branch's real `parent_simulation_id`/`branch_point_tick` (already recorded on the
+  engine via `branch_info`, just not previously surfaced), rendered as an Altair bar+fork-tick
+  chart instead of a bare comparison table.
+- **A scripted-presentation, unscripted-simulation "Guided Demo"**: a linear 8-step walkthrough
+  (Day 0 → drought → real price rise → real business pressure → a real affected citizen's real
+  Historian-explained story → a real 3-world experiment → a real sensitivity sweep → a discovery
+  screen using whatever the sweep actually found). Only the narration pacing/wording is
+  pre-written; every number shown is a live API call made at that step. Verified live end to end,
+  including the honest "no tipping point was found" fallback ending when the city had already
+  saturated earlier in the walkthrough.
+- **A real bug found and fixed during this pass**: running an experiment (`/experiments/run`) from
+  a simulation that already had an active disaster (e.g. after using Overview's "Introduce
+  Drought") failed with "A drought is already active" and failed *silently* in the dashboard (no
+  error surfaced) — each scenario branch inherits the base state's active disasters and then tried
+  to trigger a second one. Fixed the same way `sensitivity.py` already was: end the branch's own
+  copy of the disaster via a real `DISASTER_ENDED` event first (still entirely through the event
+  system). Added a regression test and error surfacing in the dashboard so this class of failure
+  is never silent again.
+- **A known limitation, disclosed rather than hidden**: the Sensitivity tab's chart-click "Why?"
+  drill-down (clicking a specific severity point to reveal a plain-language explanation) is wired
+  via Altair's `selection_point`/`on_select="rerun"`, but the click selection did not reliably
+  register in live browser testing — the underlying sweep, verdict, and charts all work correctly,
+  only this one incremental embellishment is unconfirmed. Left in place as a harmless no-op rather
+  than removed, since it degrades gracefully (no extra panel appears, nothing breaks).
+- Emoji policy carried forward unchanged (still none) per explicit instruction, even though the
+  redesign brief's own mockups used them — building/state types are communicated through the
+  context panels' plain text and the existing color palette instead.
+- **85 passed, 2 skipped** (`uv run pytest -q`) after this phase, including the new
+  `test_running_an_experiment_from_a_simulation_already_mid_disaster_does_not_raise` regression
+  test.
+
 ## Explicitly out of scope (matches SRS §45's own list, not a cut)
 
 Multiple cities, inter-city trade, political elections, cultural evolution, reinforcement

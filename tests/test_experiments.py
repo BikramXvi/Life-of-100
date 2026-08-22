@@ -99,3 +99,28 @@ def test_emergency_employment_program_is_a_real_intervention_not_scripted_hiring
     assert "emergency_employment_program" in engine.active_disasters
     cost_mult, demand_mult = engine.broad_disaster_multipliers()
     assert demand_mult > 1.0, "a stimulus must boost demand above baseline, not just reduce a shock"
+
+
+def test_running_an_experiment_from_a_simulation_already_mid_disaster_does_not_raise():
+    """A real bug found via the dashboard's Guided Demo: running What If?
+    from a simulation that already has an active drought (e.g. the user
+    triggered one from City > Overview first) used to raise "A drought is
+    already active", since each scenario branch inherits the base state's
+    active disasters and then tries to trigger a second one. Each branch is
+    disposable, so ending its own copy first (via a real DISASTER_ENDED
+    event) is safe -- mirrors the identical fix already applied in
+    sensitivity.py for the same underlying reason."""
+    base = bootstrap_simulation(SEED, population=40)
+    from life100.simulation.disasters import trigger_drought
+
+    trigger_drought(base, duration_ticks=30, severity=0.4)
+    assert "drought" in base.active_disasters
+
+    result, _ = run_experiment(
+        base,
+        [Scenario(name="No Intervention", disaster="drought", disaster_duration=30, disaster_severity=0.4)],
+        ticks=5,
+    )
+    assert result["scenarios"][0]["metrics"]["population"] > 0
+    # the base simulation's own state must be untouched by branching
+    assert "drought" in base.active_disasters

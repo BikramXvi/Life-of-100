@@ -44,11 +44,30 @@ def _slugify(name: str) -> str:
     return "".join(c if c.isalnum() else "_" for c in name.lower()).strip("_")[:40]
 
 
+def _end_disaster_if_active(world: SimulationEngine, name: str) -> None:
+    """A scenario needs to trigger a FRESH disaster on each branch, but the
+    base simulation it branches from may itself already have one active
+    (e.g. the user introduced a drought from City > Overview, then opened
+    What If? Lab). Since `world` is a throwaway branch, it's safe to end
+    its copy of that disaster first via the normal DISASTER_ENDED event
+    (CLAUDE.md rule 4: still only through the event system) rather than
+    letting the second trigger fail with "already active" -- the same fix
+    already applied in sensitivity.py for the same underlying reason."""
+    if name in world.active_disasters:
+        world.emit(
+            EventType.DISASTER_ENDED,
+            source_entity=name,
+            source_type="disaster",
+            payload={"disaster_type": name},
+        )
+
+
 def _apply_scenario(scenario: Scenario, world: SimulationEngine) -> None:
     if scenario.disaster:
         trigger = DISASTER_TRIGGERS.get(scenario.disaster)
         if trigger is None:
             raise ValueError(f"unknown disaster '{scenario.disaster}'")
+        _end_disaster_if_active(world, scenario.disaster)
         kwargs = {"duration_ticks": scenario.disaster_duration}
         if scenario.disaster == "drought" and scenario.disaster_severity is not None:
             kwargs["severity"] = scenario.disaster_severity
@@ -63,6 +82,7 @@ def _apply_scenario(scenario: Scenario, world: SimulationEngine) -> None:
         )
 
     if scenario.emergency_employment:
+        _end_disaster_if_active(world, "emergency_employment_program")
         disasters.trigger_emergency_employment_program(
             world,
             duration_ticks=scenario.disaster_duration,
