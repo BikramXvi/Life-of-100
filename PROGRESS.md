@@ -328,3 +328,37 @@ city, observe what happens, and investigate why" — not "a Streamlit app with n
 - Verified live via a full Docker rebuild, covering every new feature: landing screen, 4-mode nav,
   map click-to-panel, Overview's day-stepper + event feed, Alternate Histories branch metadata,
   Citizens' Explain My Story, and the complete 8-step Guided Demo through to its discovery screen.
+
+## 2026-08-22 (same day, later still) — a real bug found via deliberate investigation, then fixed
+
+Asked directly to run genuinely exploratory tests against the live simulation and find something
+real — not a manufactured or flattering result.
+
+- **Multi-seed robustness check**: reran the drought/business_failures sensitivity sweep at 10
+  independent seeds. All 10 show a tipping point, clustering tightly at severity 0.445 ± 0.033 —
+  strong evidence the original PROOF.md finding (found at one seed) is a real property of the
+  economy's cash-flow arithmetic, not a coincidence.
+- **Cross-disaster sweep**: swept all six non-drought disasters' own tunable magnitude parameters
+  at the same 15-tick window. Zero business failures from any of them — only drought produces this
+  effect in a realistic timeframe. Chasing why led to a real discovery: earthquake's (and flood's)
+  "structural collapse" business-failure path was checked against `cash <= 0`, but damage is a
+  *percentage of current cash* — `cash * (1 - damage_fraction)` can only equal exactly zero at
+  `damage_fraction == 1.0`. Verified directly: a 99% hit left a business with 18.31 cash, fully
+  active. The one unit test covering this (`test_earthquake_can_fail_businesses_outright`)
+  happened to hardcode the only value that ever worked, and `/disasters/earthquake` didn't even
+  expose `damage_fraction` to real callers — a documented, tested feature that was unreachable
+  through any actual use of the system.
+- **Fixed**: `engine.py`'s `_apply_business_contracted` now triggers structural-collapse failure
+  when remaining cash can't cover the business's own tracked `expenses` (a real insolvency
+  condition tied to an already-computed quantity, not an arbitrary constant), falling back to the
+  exact-zero check when expenses hasn't been computed yet. `/disasters/earthquake` and
+  `/disasters/flood` now accept `damage_fraction`/`affected_share` so the fix is actually reachable
+  through the API, not just direct Python calls.
+- Verified the fix does the intended thing, not an overcorrection: a healthy business (cash 4205.50,
+  expenses 986.22) survives a severe 0.7 earthquake with cash to spare (1261.65); a business already
+  weakened by a drought (cash 1885.22, expenses 1089.25) genuinely fails under the same 0.7
+  earthquake (cash lands at 565.57 — positive, but below what it needs to operate).
+- New regression test: `tests/test_disasters.py::test_a_realistic_damage_fraction_can_also_fail_an_already_weakened_business`,
+  plus an API-level test confirming both endpoints accept the new parameters.
+- **87 passed, 2 skipped** (`uv run pytest -q`).
+- Full write-up with all real numbers in `PROOF.md` §2.

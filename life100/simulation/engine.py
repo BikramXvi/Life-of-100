@@ -150,7 +150,22 @@ def _apply_business_contracted(engine: SimulationEngine, event: Event) -> None:
     damage_fraction = float(event.payload.get("damage_fraction", 0.0))
     loss = round(business.cash * damage_fraction, 2)
     business.cash = round(business.cash - loss, 2)
-    if event.payload.get("allow_failure") and business.cash <= 0:
+    # "Structural collapse" (SRS: "some businesses may be damaged badly
+    # enough to fail outright") means the damage leaves the business unable
+    # to cover even one more period's own operating expenses -- not only
+    # the literal edge case of cash landing at exactly zero. Damage is a
+    # *percentage* of current cash, so cash*(1-damage_fraction) can only
+    # equal exactly zero when damage_fraction == 1.0 (a 100% wipeout);
+    # any smaller fraction, however severe (verified: even 0.99), always
+    # leaves a small positive balance and could never trigger a "cash<=0"
+    # check. That made this pathway unreachable through any real disaster
+    # magnitude in practice -- found empirically, documented in PROOF.md.
+    # Comparing against the business's own tracked `expenses` ties the
+    # threshold to a real, already-computed economic quantity instead of
+    # an arbitrary constant; falls back to the exact-zero check when
+    # expenses hasn't been computed yet (e.g. a disaster on tick 0).
+    insolvent = business.cash <= 0 or (business.expenses > 0 and business.cash < business.expenses)
+    if event.payload.get("allow_failure") and insolvent:
         # A direct, single-level consequence of this event (structural
         # collapse), not a cascade computed over many ticks — emitting from
         # within a handler is fine here; engine.emit is plain recursion, not

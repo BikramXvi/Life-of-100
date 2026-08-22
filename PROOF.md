@@ -108,6 +108,55 @@ smooth, gradual response — because they genuinely are smooth, not because the 
 to always find something. That "no tipping point" verdict for two of the six swept metrics is
 itself part of the proof: a manufactured finding would have flagged all six.
 
+**The tipping point is a property of the economy, not an accident of one seed**
+(investigated live, not yet a permanent test — see below for why): the sweep above was run once,
+at `seed=847291`. Repeating it independently at 10 different seeds (`847291, 111111, 222222,
+333333, 444444, 555555, 666666, 777777, 888888, 999999`), same population, same severity range:
+
+| | Result |
+|---|---|
+| Seeds showing a `business_failures` tipping point | **10 / 10** |
+| Tipping-bracket midpoints | 0.375, 0.425, 0.425, 0.425, 0.425, 0.475, 0.475, 0.475, 0.475, 0.475 |
+| Mean ± population stdev | **0.445 ± 0.033** |
+
+Every one of ten completely different populations — different names, ages, savings, employer
+assignments — breaks in the same narrow band (severity 0.42–0.48). That consistency is the real
+signature of an emergent property of the cash-flow arithmetic, not a fluke of one specific city.
+
+**Only drought produces this effect within a realistic window — and chasing why exposed a real
+bug, now fixed.** Sweeping every other disaster's own tunable magnitude parameter (flood/
+earthquake damage_fraction 0.1–0.9, disease/recession/energy magnitude 0.05–0.5) at the same
+15-tick window used above: **zero business failures from any of them.** Tracing why led to
+`engine.py`'s `_apply_business_contracted` handler — earthquake's docstring promises "some
+businesses may be damaged badly enough to fail outright," but damage was applied as a *percentage
+of current cash* and failure required `cash <= 0` exactly. Since `cash * (1 - damage_fraction)`
+is non-negative for any `damage_fraction <= 1.0`, only an exact **100.000% wipeout** could ever
+zero out a business — verified directly:
+
+| damage_fraction | Cash before | Cash after | Failed? |
+|---|---|---|---|
+| 0.99 (99% wiped out) | 1830.62 | 18.31 | No |
+| 1.00 (100% wiped out) | 4277.47 | 0.00 | Yes |
+
+And the API's `/disasters/earthquake` endpoint didn't even expose `damage_fraction` — every real
+trigger used the hardcoded default of 0.7, which can never fail a business under the old check.
+The *only* place `damage_fraction=1.0` ever appeared was one unit test that happened to hardcode
+that exact edge value — a real, documented, tested feature that was unreachable through any actual
+use of the system, hidden precisely because the one test covering it used the only value that
+works. **Fixed**: failure now triggers when a business can't cover even one more round of its own
+tracked `expenses` (a real insolvency condition, not the impossible cash-exactly-zero edge case),
+and the API now exposes `damage_fraction`/`affected_share` for both flood and earthquake. Verified
+the fix does the intended thing — a healthy business survives a severe hit, a business already
+weakened by a drought does not:
+
+| Scenario | Cash before | Cash after | Failed? |
+|---|---|---|---|
+| Healthy business, earthquake damage_fraction=0.7 | 4205.50 | 1261.65 | No (cash still covers expenses) |
+| Drought-weakened business, same 0.7 earthquake | 1885.22 | 565.57 | **Yes** (positive cash, but below its own expenses) |
+
+`tests/test_disasters.py::test_a_realistic_damage_fraction_can_also_fail_an_already_weakened_business`
+locks this in as a regression test.
+
 ---
 
 ## 3. The system can be experimentally used to compare possible futures

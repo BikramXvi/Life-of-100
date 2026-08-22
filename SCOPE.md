@@ -299,6 +299,24 @@ intervene in this city, observe what happens, and investigate why" — not "here
   `test_running_an_experiment_from_a_simulation_already_mid_disaster_does_not_raise` regression
   test.
 
+## Added since the last pass: a real bug found via deliberate multi-seed/multi-disaster investigation
+
+Requested directly: run genuinely exploratory tests against the live simulation and find something
+real. Two results, both empirically verified, not assumed:
+
+- **The drought business-failure tipping point is robust across 10 independent seeds** (mean
+  severity 0.445 ± 0.033), not an artifact of the one seed used in the original PROOF.md write-up
+  — strong additional evidence it's a real property of the cash-flow arithmetic.
+- **Earthquake's (and flood's) documented "structural collapse" business-failure path was
+  unreachable through any real use of the system.** Damage was a percentage of current cash, so
+  only an exact 100% wipeout could ever zero out a business — verified: a 99% hit left a business
+  with 18.31 cash and fully active. The one unit test covering this happened to hardcode the only
+  value (`damage_fraction=1.0`) that ever worked, and the API didn't even expose the parameter.
+  **Fixed** in `engine.py`'s `_apply_business_contracted`: failure now triggers when remaining cash
+  can't cover the business's own tracked `expenses` (a real insolvency condition), and
+  `/disasters/earthquake`/`/disasters/flood` now expose `damage_fraction`/`affected_share`. See
+  `PROOF.md` §2 for full numbers and `tests/test_disasters.py`'s new regression test.
+
 ## Explicitly out of scope (matches SRS §45's own list, not a cut)
 
 Multiple cities, inter-city trade, political elections, cultural evolution, reinforcement

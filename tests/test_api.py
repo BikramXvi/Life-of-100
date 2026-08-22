@@ -126,6 +126,25 @@ def test_full_demo_flow_without_external_infra():
     assert bad_sweep.status_code == 400
 
 
+def test_earthquake_and_flood_expose_damage_fraction_over_the_api():
+    """Previously the API only accepted duration_ticks for these two --
+    damage_fraction/affected_share were only reachable by calling
+    trigger_earthquake()/trigger_flood() directly in Python, which is part
+    of why the structural-collapse failure path went untested at any
+    realistic magnitude for so long (see PROOF.md)."""
+    client.post("/simulation/start", json={"seed": 847291, "population": 60})
+    resp = client.post(
+        "/disasters/earthquake",
+        json={"duration_ticks": 10, "damage_fraction": 0.7, "affected_share": 0.5},
+    )
+    assert resp.status_code == 200
+    resp = client.post(
+        "/disasters/flood",
+        json={"duration_ticks": 10, "damage_fraction": 0.5, "affected_share": 0.4},
+    )
+    assert resp.status_code == 200
+
+
 def test_endpoints_require_a_started_simulation():
     # A process-wide singleton means this depends on test order in this
     # module; assert on the dependency's behavior directly instead.

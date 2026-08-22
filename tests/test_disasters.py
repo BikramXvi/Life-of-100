@@ -1,6 +1,7 @@
 from life100.events.schemas import EventType
 from life100.simulation.disasters import (
     trigger_disease_outbreak,
+    trigger_drought,
     trigger_earthquake,
     trigger_economic_recession,
     trigger_energy_crisis,
@@ -42,6 +43,45 @@ def test_earthquake_can_fail_businesses_outright():
     assert failed, "expected at least one immediate structural failure from a severe earthquake"
     for event in failed:
         assert engine.businesses[event.source_entity].active is False
+
+
+def test_a_realistic_damage_fraction_can_also_fail_an_already_weakened_business():
+    """The bug this guards against: "structural collapse" was checked
+    against `cash <= 0`, but damage is a *percentage* of current cash, so
+    cash*(1-damage_fraction) can only equal exactly zero when
+    damage_fraction == 1.0 -- any smaller value, however severe, always
+    left a small positive balance. That made the failure path unreachable
+    at any real damage_fraction the API could ever send (the default is
+    0.7, and the endpoint didn't even expose the parameter). Fixed by
+    comparing remaining cash against the business's own tracked
+    `expenses` -- "can't cover its own next round of operating costs" is a
+    real insolvency condition, not the previous impossible edge case.
+
+    Reproduces the exact compound scenario found while investigating this:
+    a business already weakened by a drought, then hit by a realistic
+    (not artificially 100%) earthquake."""
+    engine = _engine(n=100)
+    trigger_drought(engine, duration_ticks=30, severity=0.35)
+    for _ in range(15):
+        run_tick(engine)
+
+    weakened = [b for b in engine.businesses.values() if b.active and 0 < b.cash < b.expenses * 3]
+    assert weakened, "expected at least one business weakened but not yet failed by the drought"
+    target = weakened[0]
+    assert target.cash > 0, "sanity check: the target must start with positive cash, not already at zero"
+
+    failures_before = len(engine.log.of_type(EventType.BUSINESS_FAILED))
+    trigger_earthquake(engine, duration_ticks=10, damage_fraction=0.7, affected_share=1.0)
+
+    assert engine.businesses[target.business_id].cash > 0, (
+        "the fix must not make damage push cash negative -- it still lands positive, "
+        "just below what the business needs to operate"
+    )
+    assert engine.businesses[target.business_id].active is False, (
+        "a realistic 0.7 earthquake on an already-weakened business must be able to fail it, "
+        "even though a plain cash<=0 check never would have"
+    )
+    assert len(engine.log.of_type(EventType.BUSINESS_FAILED)) > failures_before
 
 
 def test_disease_outbreak_emits_health_impacted_events_and_reduces_health():
