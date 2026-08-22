@@ -18,7 +18,7 @@ Household/Business.
 from __future__ import annotations
 
 from life100.events.schemas import EventType
-from life100.simulation import decisions
+from life100.simulation import decisions, life_events
 from life100.simulation.engine import SimulationEngine
 from life100.simulation.resources import (
     DROUGHT_PRODUCTION_MULTIPLIER,
@@ -49,6 +49,7 @@ def run_tick(engine: SimulationEngine) -> None:
     _update_households(engine)
     _update_resources(engine)
     decisions.run_daily_decisions(engine)
+    life_events.run_tick_life_events(engine)
 
 
 def _expire_disasters(engine: SimulationEngine) -> None:

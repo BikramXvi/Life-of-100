@@ -169,6 +169,120 @@ def _apply_job_started(engine: SimulationEngine, event: Event) -> None:
         business.employee_ids.append(citizen.citizen_id)
 
 
+def _apply_citizen_died(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    if citizen is None:
+        return
+    citizen.alive = False
+    if citizen.employer_id:
+        business = engine.businesses.get(citizen.employer_id)
+        if business and citizen.citizen_id in business.employee_ids:
+            business.employee_ids.remove(citizen.citizen_id)
+    citizen.occupation = "deceased"
+    citizen.employer_id = None
+    citizen.salary = 0.0
+    if citizen.spouse_id:
+        spouse = engine.citizens.get(citizen.spouse_id)
+        if spouse:
+            spouse.marital_status = "widowed"
+            spouse.spouse_id = None
+
+
+def _apply_marriage(engine: SimulationEngine, event: Event) -> None:
+    a = engine.citizens.get(event.payload["citizen_id"])
+    b = engine.citizens.get(event.payload["spouse_id"])
+    if a is None or b is None:
+        return
+    a.spouse_id, b.spouse_id = b.citizen_id, a.citizen_id
+    a.marital_status = b.marital_status = "married"
+
+    edges_a = engine.relationships.setdefault(a.citizen_id, [])
+    edges_b = engine.relationships.setdefault(b.citizen_id, [])
+    if not any(r.other_id == b.citizen_id and r.relationship_type == "family" for r in edges_a):
+        from life100.simulation.social import Relationship
+
+        edges_a.append(Relationship(a.citizen_id, b.citizen_id, "family", 0.9, 0.9, 0.9, history=["married"]))
+        edges_b.append(Relationship(b.citizen_id, a.citizen_id, "family", 0.9, 0.9, 0.9, history=["married"]))
+
+    # Merge into one household (SRS §6.3: marriage is a family event) -- b
+    # moves into a's household.
+    new_household = engine.households.get(a.household_id)
+    old_household = engine.households.get(b.household_id)
+    if new_household and old_household and old_household is not new_household:
+        if b.citizen_id in old_household.member_ids:
+            old_household.member_ids.remove(b.citizen_id)
+        if b.citizen_id not in new_household.member_ids:
+            new_household.member_ids.append(b.citizen_id)
+        b.household_id = a.household_id
+        if not old_household.member_ids:
+            del engine.households[old_household.household_id]
+
+
+def _apply_divorce(engine: SimulationEngine, event: Event) -> None:
+    a = engine.citizens.get(event.payload["citizen_id"])
+    b = engine.citizens.get(event.payload["spouse_id"])
+    if a is None or b is None:
+        return
+    a.spouse_id = b.spouse_id = None
+    a.marital_status = b.marital_status = "divorced"
+
+    # b moves out into a new household of their own.
+    old_household = engine.households.get(a.household_id)
+    if old_household and b.citizen_id in old_household.member_ids:
+        old_household.member_ids.remove(b.citizen_id)
+        new_household_id = f"{old_household.household_id}_split_{event.simulation_tick}"
+        new_household = Household(household_id=new_household_id, member_ids=[b.citizen_id])
+        engine.households[new_household_id] = new_household
+        b.household_id = new_household_id
+
+
+def _apply_child_born(engine: SimulationEngine, event: Event) -> None:
+    import random as _random
+
+    from life100.simulation.citizens import Citizen, Personality
+    from life100.simulation.social import Relationship
+
+    payload = event.payload
+    child_id = payload["citizen_id"]
+    if child_id in engine.citizens:
+        return
+    rng = _random.Random(abs(hash(child_id)) % (2**32))
+    child = Citizen(
+        citizen_id=child_id,
+        name=payload["name"],
+        age=0,
+        gender=payload["gender"],
+        personality=Personality(
+            risk_tolerance=round(rng.random(), 3),
+            ambition=round(rng.random(), 3),
+            patience=round(rng.random(), 3),
+            social_tendency=round(rng.random(), 3),
+        ),
+        household_id=payload["household_id"],
+        parent_ids=list(payload["parent_ids"]),
+    )
+    engine.citizens[child_id] = child
+    engine.relationships.setdefault(child_id, [])
+
+    household = engine.households.get(payload["household_id"])
+    if household and child_id not in household.member_ids:
+        household.member_ids.append(child_id)
+
+    for parent_id in child.parent_ids:
+        parent = engine.citizens.get(parent_id)
+        if parent is None:
+            continue
+        if child_id not in parent.children_ids:
+            parent.children_ids.append(child_id)
+        engine.relationships.setdefault(parent_id, [])
+        engine.relationships[parent_id].append(
+            Relationship(parent_id, child_id, "family", 0.9, 0.9, 0.85, history=["formed as family"])
+        )
+        engine.relationships[child_id].append(
+            Relationship(child_id, parent_id, "family", 0.9, 0.9, 0.85, history=["formed as family"])
+        )
+
+
 def _apply_relationship_changed(engine: SimulationEngine, event: Event) -> None:
     a_id, b_id = event.payload["citizen_id"], event.payload["other_id"]
     delta = float(event.payload.get("strength_delta", 0.0))
@@ -226,6 +340,10 @@ _HANDLERS: dict[EventType, Callable[[SimulationEngine, Event], None]] = {
     EventType.LOAN_REPAID: _apply_loan_repaid,
     EventType.JOB_STARTED: _apply_job_started,
     EventType.RELATIONSHIP_CHANGED: _apply_relationship_changed,
+    EventType.CITIZEN_DIED: _apply_citizen_died,
+    EventType.MARRIAGE: _apply_marriage,
+    EventType.DIVORCE: _apply_divorce,
+    EventType.CHILD_BORN: _apply_child_born,
     EventType.RESOURCE_EXTRACTED: _noop,
     EventType.AI_DECISION_PROPOSED: _noop,
     EventType.AI_DECISION_ACCEPTED: _noop,
