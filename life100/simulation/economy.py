@@ -93,12 +93,14 @@ def _average_household_stress(engine: SimulationEngine) -> float:
 
 
 def _update_businesses(engine: SimulationEngine) -> None:
-    demand_multiplier = max(0.5, 1.0 - _average_household_stress(engine) * 0.6)
+    broad_cost_multiplier, broad_demand_multiplier = engine.broad_disaster_multipliers()
+    demand_multiplier = max(0.5, 1.0 - _average_household_stress(engine) * 0.6) * broad_demand_multiplier
     for business in list(engine.businesses.values()):
         if not business.active:
             continue
         headcount = business.headcount()
-        cost_multiplier = engine.food_price_index if business.industry in FOOD_INDUSTRIES else 1.0
+        food_cost_multiplier = engine.food_price_index if business.industry in FOOD_INDUSTRIES else 1.0
+        cost_multiplier = food_cost_multiplier * broad_cost_multiplier
 
         daily_salaries = (
             sum(engine.citizens[cid].salary for cid in business.employee_ids if cid in engine.citizens)

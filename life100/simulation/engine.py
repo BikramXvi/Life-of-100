@@ -64,6 +64,23 @@ class SimulationEngine:
         day = day_of_year % 30 + 1
         return f"YEAR_{year:02d}_MONTH_{month:02d}_DAY_{day:02d}"
 
+    def broad_disaster_multipliers(self) -> tuple[float, float]:
+        """(cost_multiplier, demand_multiplier) aggregated across every
+        currently-active disaster that isn't drought/food_shortage (those
+        already act through food_price_index specifically). Lets
+        economy.py apply energy-crisis-style cost shocks and disease/
+        recession-style demand shocks generically, without one bespoke
+        code path per disaster type."""
+        cost_multiplier = 1.0
+        demand_multiplier = 1.0
+        for info in self.active_disasters.values():
+            magnitude = info.get("magnitude", 0.0)
+            if info.get("kind") == "broad_cost_shock":
+                cost_multiplier *= 1.0 + magnitude
+            elif info.get("kind") == "broad_demand_shock":
+                demand_multiplier *= max(0.2, 1.0 - magnitude)
+        return cost_multiplier, demand_multiplier
+
     def emit(self, event_type: EventType, source_entity: str, source_type: str, payload: dict) -> Event:
         """Build, log, publish, and apply one event. The only entry point
         for a state change anywhere in the simulation."""
@@ -113,6 +130,26 @@ def _apply_business_failed(engine: SimulationEngine, event: Event) -> None:
         business.active = False
 
 
+def _apply_business_contracted(engine: SimulationEngine, event: Event) -> None:
+    business = engine.businesses.get(event.source_entity)
+    if business is None or not business.active:
+        return
+    damage_fraction = float(event.payload.get("damage_fraction", 0.0))
+    loss = round(business.cash * damage_fraction, 2)
+    business.cash = round(business.cash - loss, 2)
+    if event.payload.get("allow_failure") and business.cash <= 0:
+        # A direct, single-level consequence of this event (structural
+        # collapse), not a cascade computed over many ticks — emitting from
+        # within a handler is fine here; engine.emit is plain recursion, not
+        # shared mutable global state.
+        engine.emit(
+            EventType.BUSINESS_FAILED,
+            source_entity=business.business_id,
+            source_type="business",
+            payload={"reason": f"{event.payload.get('reason', 'disaster')}_structural_failure"},
+        )
+
+
 def _apply_purchase(engine: SimulationEngine, event: Event) -> None:
     citizen = engine.citizens.get(event.source_entity)
     if citizen is None:
@@ -125,6 +162,14 @@ def _apply_school_attended(engine: SimulationEngine, event: Event) -> None:
     if citizen is None:
         return
     citizen.academic_performance = round(min(1.0, citizen.academic_performance + 0.01), 3)
+
+
+def _apply_health_impacted(engine: SimulationEngine, event: Event) -> None:
+    citizen = engine.citizens.get(event.source_entity)
+    if citizen is None:
+        return
+    citizen.health_score = round(max(0.05, citizen.health_score - float(event.payload.get("health_delta", 0.0))), 3)
+    citizen.stress = round(min(1.0, citizen.stress + float(event.payload.get("stress_delta", 0.0))), 3)
 
 
 def _apply_medical_visit(engine: SimulationEngine, event: Event) -> None:
@@ -304,6 +349,8 @@ def _apply_disaster_started(engine: SimulationEngine, event: Event) -> None:
     engine.active_disasters[disaster_type] = {
         "started_tick": engine.tick,
         "duration": event.payload.get("duration_ticks", 20),
+        "kind": event.payload.get("kind"),  # broad_cost_shock | broad_demand_shock | None
+        "magnitude": event.payload.get("magnitude", 0.0),
     }
 
 
@@ -329,11 +376,13 @@ def _noop(engine: SimulationEngine, event: Event) -> None:
 _HANDLERS: dict[EventType, Callable[[SimulationEngine, Event], None]] = {
     EventType.JOB_LOST: _apply_job_lost,
     EventType.BUSINESS_FAILED: _apply_business_failed,
+    EventType.BUSINESS_CONTRACTED: _apply_business_contracted,
     EventType.PRICE_CHANGED: _apply_price_changed,
     EventType.DISASTER_STARTED: _apply_disaster_started,
     EventType.DISASTER_ENDED: _apply_disaster_ended,
     EventType.POLICY_CHANGED: _apply_policy_changed,
     EventType.PURCHASE: _apply_purchase,
+    EventType.HEALTH_IMPACTED: _apply_health_impacted,
     EventType.SCHOOL_ATTENDED: _apply_school_attended,
     EventType.MEDICAL_VISIT: _apply_medical_visit,
     EventType.LOAN_CREATED: _apply_loan_created,

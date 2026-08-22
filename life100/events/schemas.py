@@ -62,6 +62,12 @@ class EventType(str, Enum):
     DISASTER_ENDED = "DISASTER_ENDED"
 
     PRICE_CHANGED = "PRICE_CHANGED"
+    # Intentional schema extension beyond SRS §15's list, same precedent as
+    # PRICE_CHANGED (CLAUDE.md rule 5): disease_outbreak needs a way to
+    # represent a citizen falling ill that isn't MEDICAL_VISIT (a visit
+    # improves health; this is the opposite — the shock that later prompts
+    # a visit).
+    HEALTH_IMPACTED = "HEALTH_IMPACTED"
 
     AI_DECISION_PROPOSED = "AI_DECISION_PROPOSED"
     AI_DECISION_ACCEPTED = "AI_DECISION_ACCEPTED"
