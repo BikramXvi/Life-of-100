@@ -51,9 +51,17 @@ def _food_price_shock(engine: SimulationEngine, shock_multiplier: float) -> None
     )
 
 
-def trigger_drought(engine: SimulationEngine, duration_ticks: int = DEFAULT_DROUGHT_DURATION_TICKS) -> Event:
-    started = _start_disaster(engine, "drought", duration_ticks)
-    _food_price_shock(engine, DROUGHT_INITIAL_SHOCK)
+def trigger_drought(
+    engine: SimulationEngine,
+    duration_ticks: int = DEFAULT_DROUGHT_DURATION_TICKS,
+    severity: float = 0.4,
+) -> Event:
+    """`severity` is the fractional initial food-price shock (0.4 = +40%,
+    matching the original fixed DROUGHT_INITIAL_SHOCK) — parametrized so a
+    sensitivity sweep (SCOPE.md/PROOF.md's "what if the shock were bigger or
+    smaller") can actually vary it, rather than only varying duration."""
+    started = _start_disaster(engine, "drought", duration_ticks, magnitude=severity)
+    _food_price_shock(engine, 1.0 + severity)
     return started
 
 
@@ -143,6 +151,28 @@ def trigger_energy_crisis(
     channel)."""
     return _start_disaster(engine, "energy_crisis", duration_ticks, kind="broad_cost_shock",
                              magnitude=cost_magnitude)
+
+
+def trigger_emergency_employment_program(
+    engine: SimulationEngine,
+    duration_ticks: int = 30,
+    demand_boost: float = 0.3,
+) -> Event:
+    """A government stimulus, not a disaster — included here because it
+    reuses the exact same mechanism (`broad_demand_shock`, engine.py's
+    `broad_disaster_multipliers`) with the sign flipped: a *positive*
+    demand shock. This lets the EXISTING hiring/business mechanics
+    naturally re-employ people as businesses recover, rather than
+    scripting a mass-hiring event — which would look exactly like the
+    thing this whole project is trying to prove it isn't (SRS §3.3).
+    """
+    return _start_disaster(
+        engine,
+        "emergency_employment_program",
+        duration_ticks,
+        kind="broad_demand_shock",
+        magnitude=-demand_boost,
+    )
 
 
 def _damage_random_businesses(

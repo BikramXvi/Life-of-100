@@ -16,6 +16,7 @@ from life100.api.routers import (  # noqa: E402
     citizens,
     disasters,
     events,
+    experiments,
     households,
     observability,
     simulation,
@@ -42,6 +43,7 @@ app.include_router(ai.router)
 app.include_router(warehouse.router)
 app.include_router(observability.router)
 app.include_router(world.router)
+app.include_router(experiments.router)
 app.include_router(analytics.router)
 
 

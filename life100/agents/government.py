@@ -19,7 +19,7 @@ from life100.simulation.engine import SimulationEngine
 POLICY_PROPOSAL_SCHEMA = {
     "type": "object",
     "properties": {
-        "action": {"type": "string", "enum": ["food_subsidy", "tax_rate", "interest_rate"]},
+        "action": {"type": "string", "enum": ["food_subsidy", "tax_rate", "interest_rate", "healthcare_spending"]},
         "value": {"type": "number"},
         "rationale": {"type": "string"},
     },

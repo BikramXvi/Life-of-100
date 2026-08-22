@@ -18,6 +18,7 @@ POLICY_FIELD_MAP = {
     "food_subsidy": "food_subsidy",
     "tax_rate": "tax_rate",
     "interest_rate": "interest_rate",
+    "healthcare_spending": "healthcare_spending",
 }
 
 

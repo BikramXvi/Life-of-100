@@ -73,6 +73,27 @@ def test_full_demo_flow_without_external_infra():
     assert len(world["zones"]) == world["width"] * world["height"]
     assert any(b["kind"] == "home" for b in world["buildings"])
 
+    experiment = client.post(
+        "/experiments/run",
+        json={
+            "ticks": 5,
+            "scenarios": [
+                {"name": "World A - No Intervention", "disaster": "drought"},
+                {"name": "World B - Food Subsidy", "disaster": "drought", "policies": {"food_subsidy": 0.5}},
+            ],
+        },
+    )
+    assert experiment.status_code == 200
+    body = experiment.json()
+    assert len(body["scenarios"]) == 2
+    assert "control" in body
+    # every resulting world got registered and is independently inspectable
+    world_b_id = body["scenarios"][1]["simulation_id"]
+    assert client.get("/simulation/list").json()["active_simulation_id"] is not None
+    activate = client.post(f"/simulation/activate/{world_b_id}")
+    assert activate.status_code == 200
+    assert client.get("/citizens").status_code == 200
+
 
 def test_endpoints_require_a_started_simulation():
     # A process-wide singleton means this depends on test order in this

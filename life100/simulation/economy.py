@@ -71,8 +71,14 @@ def _expire_disasters(engine: SimulationEngine) -> None:
 
 
 def _update_food_price(engine: SimulationEngine) -> None:
-    if "drought" in engine.active_disasters:
-        new_index = min(engine.food_price_index * 1.08, 3.0)
+    drought = engine.active_disasters.get("drought")
+    if drought:
+        # ramp rate scales with the drought's own severity (magnitude) --
+        # a bigger initial shock also means a faster-worsening drought,
+        # not just a bigger one-off jump. Falls back to the original fixed
+        # 1.08/tick if magnitude wasn't recorded (e.g. an older event).
+        ramp_rate = 1.0 + max(0.08, drought.get("magnitude", 0.4) * 0.2)
+        new_index = min(engine.food_price_index * ramp_rate, 3.0)
     else:
         new_index = max(1.0, engine.food_price_index * 0.97)
     if abs(new_index - engine.food_price_index) > 1e-6:

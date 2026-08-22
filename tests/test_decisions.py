@@ -50,6 +50,32 @@ def test_purchases_reduce_savings():
         assert total_spent > 0
 
 
+def test_healthcare_spending_is_a_real_lever_not_decorative():
+    """government.healthcare_spending was stored but never read anywhere
+    until this - it must now measurably increase access (more medical
+    visits among citizens who need care) and reduce out-of-pocket cost."""
+    low = bootstrap_simulation(SEED, population=60, simulation_id="sim_low_funding")
+    high = bootstrap_simulation(SEED, population=60, simulation_id="sim_high_funding")
+    high.government.healthcare_spending = 1.0
+
+    for citizen_id in list(low.citizens):
+        low.citizens[citizen_id].stress = 0.9
+        high.citizens[citizen_id].stress = 0.9
+
+    for _ in range(15):
+        run_tick(low)
+        run_tick(high)
+
+    low_visits = len(low.log.of_type(EventType.MEDICAL_VISIT))
+    high_visits = len(high.log.of_type(EventType.MEDICAL_VISIT))
+    assert high_visits >= low_visits
+
+    low_total_cost = sum(e.payload["cost"] for e in low.log.of_type(EventType.MEDICAL_VISIT))
+    high_total_cost = sum(e.payload["cost"] for e in high.log.of_type(EventType.MEDICAL_VISIT))
+    if low_visits and high_visits:
+        assert (high_total_cost / high_visits) < (low_total_cost / low_visits)
+
+
 def test_relationship_changed_updates_the_graph():
     engine = _run(n=40, ticks=30)
     changed = engine.log.of_type(EventType.RELATIONSHIP_CHANGED)

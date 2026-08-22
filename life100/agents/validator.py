@@ -15,6 +15,7 @@ ALLOWED_POLICY_ACTIONS: dict[str, tuple[float, float]] = {
     "food_subsidy": (0.0, 1.0),
     "tax_rate": (0.0, 0.6),
     "interest_rate": (0.0, 0.3),
+    "healthcare_spending": (0.0, 1.0),
 }
 BUSINESS_ACTION_BOUNDS: dict[str, tuple[float, float]] = {
     "hire": (1, 5),

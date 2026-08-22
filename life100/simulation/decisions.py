@@ -98,9 +98,15 @@ def _decide_job_search(engine: SimulationEngine, citizen, rng: random.Random) ->
 
 def _decide_healthcare(engine: SimulationEngine, citizen, rng: random.Random) -> None:
     needs_care = citizen.health_score < MEDICAL_VISIT_HEALTH_THRESHOLD or citizen.stress > MEDICAL_VISIT_STRESS_THRESHOLD
-    if not needs_care or rng.random() > MEDICAL_VISIT_CHANCE:
+    # government.healthcare_spending is a real lever, not decorative: better
+    # funding means better access (higher chance someone who needs care
+    # actually gets it) and lower out-of-pocket cost (subsidized), not just
+    # a number sitting in the Government dataclass.
+    funding = engine.government.healthcare_spending
+    access_chance = min(1.0, MEDICAL_VISIT_CHANCE * (1.0 + funding))
+    if not needs_care or rng.random() > access_chance:
         return
-    cost = round(rng.uniform(20, 150), 2)
+    cost = round(rng.uniform(20, 150) * max(0.1, 1.0 - funding), 2)
     reason = "stress-related checkup" if citizen.stress > MEDICAL_VISIT_STRESS_THRESHOLD else "general checkup"
     engine.emit(
         EventType.MEDICAL_VISIT,

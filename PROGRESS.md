@@ -143,3 +143,30 @@ not the full 30-milestone roadmap. See `SCOPE.md` for exactly what's in/out of s
   app, Dockerfiles, thin Streamlit dashboard, README/demo script. **[Done]**
 - **Assumption to confirm later:** 1 tick = 1 simulated day for this submission (SRS's own "1
   tick = 1 hour" granularity is simplified — see `SCOPE.md`). **[Still the case — see SCOPE.md]**
+
+## 2026-08-22 — The "What If?" Engine (experimentally comparable futures)
+
+Direct response to the reframing: the project must let you actually run a controlled experiment
+on the society, not just narrate that it could.
+
+- `life100/simulation/experiments.py` (new) — `Scenario` dataclass + `run_experiment()`: branches
+  the live simulation into a Control plus N scenario worlds via `branch_simulation`, runs each for
+  an identical number of ticks, returns real `pct_change_vs_control` metrics and the actual engine
+  objects (registered into `state.simulations` via the new `/experiments/run` router).
+- `life100/simulation/disasters.py` — `trigger_drought()` gained a `severity` parameter (shock
+  size + price ramp rate both now scale with it, previously hardcoded); new
+  `trigger_emergency_employment_program()` reuses the existing `broad_demand_shock` mechanism
+  with a negative magnitude rather than scripting a hiring event.
+- `life100/simulation/decisions.py` — `government.healthcare_spending` wired into
+  `_decide_healthcare()` as a real lever (access chance + cost), closing a gap where it was stored
+  but never read; `agents/government.py`/`agents/validator.py` extended to match.
+- Dashboard: new "What If? Lab" tab (disaster/severity/duration + Government intervention +
+  Emergency Employment sliders, comparison table, grouped bar chart). Live-tested end to end;
+  found and fixed a shared-y-axis chart bug (`resolve_scale(y="independent")`) where 0–1-scale
+  metrics visually flatlined next to 100s-scale ones.
+- **77 passed, 2 skipped** (`uv run pytest -q`) after this phase, including
+  `tests/test_experiments.py`'s `test_one_city_three_futures_produces_real_measured_divergence`.
+- Verified live via the actual dashboard (not just pytest): one branch point, three interventions,
+  real divergent numbers each run — e.g. one run had Food Subsidy beat Emergency Employment on
+  unemployment but lose on business failures; a later run at a different branch point had
+  Emergency Employment sweep every metric instead. See `SCOPE.md` for the full write-up.

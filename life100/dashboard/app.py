@@ -80,7 +80,7 @@ if status is None:
     st.stop()
 
 tabs = st.tabs(
-    ["World View", "City Dashboard", "Citizens", "Households", "Businesses", "Events & Causality", "AI Agents", "Alternate Timelines"]
+    ["World View", "City Dashboard", "What If? Lab", "Citizens", "Households", "Businesses", "Events & Causality", "AI Agents", "Alternate Timelines"]
 )
 
 # ============================================================================
@@ -350,9 +350,121 @@ with tabs[1]:
     st.json(status["policies"] or {"food_subsidy": 0, "tax_rate": 0.15, "interest_rate": 0.05})
 
 # ============================================================================
-# Citizens (SRS §30.2)
+# What If? Lab — the actual point of this project.
+#
+# "We don't know what will happen. Let's run the experiment." One city, one
+# starting state, N parallel worlds branched from it, each given a
+# different intervention, all run for the same number of days. Every
+# number below comes from POST /experiments/run actually simulating each
+# world — there is no lookup table.
 # ============================================================================
 with tabs[2]:
+    st.markdown("#### One city. Parallel futures.")
+    st.caption(
+        "Branches the CURRENT simulation state into several independent worlds, applies a "
+        "different intervention to each, and runs every one of them for the same number of days."
+    )
+
+    exp_col1, exp_col2 = st.columns(2)
+    with exp_col1:
+        st.markdown("**Scenario**")
+        exp_disaster = st.selectbox(
+            "Disaster",
+            ["drought", "food_shortage", "flood", "earthquake", "disease_outbreak", "economic_recession", "energy_crisis"],
+            key="exp_disaster",
+        )
+        exp_duration = st.slider("Duration (days)", 5, 90, 30, key="exp_duration")
+        exp_severity = st.slider(
+            "Drought severity (only applies to drought)", 0.1, 1.0, 0.4, step=0.05, key="exp_severity"
+        )
+        exp_ticks = st.slider("Days to run", 5, 90, 30, key="exp_ticks")
+
+    with exp_col2:
+        st.markdown("**Government intervention (World B)**")
+        exp_food_subsidy = st.slider("Food subsidy", 0.0, 1.0, 0.5, step=0.05, key="exp_food_subsidy")
+        exp_interest_rate = st.slider("Interest rate", 0.0, 0.3, 0.05, step=0.01, key="exp_interest_rate")
+        exp_healthcare = st.slider("Healthcare funding", 0.0, 1.0, 0.5, step=0.05, key="exp_healthcare")
+        st.markdown("**World C**")
+        st.caption("Emergency employment program (a demand stimulus, not scripted mass-hiring)")
+
+    if st.button("▶ Run Experiment (3 parallel worlds)", type="primary"):
+        exp_request = {
+            "ticks": int(exp_ticks),
+            "scenarios": [
+                {"name": "World A — No Intervention", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
+                 "disaster_severity": float(exp_severity)},
+                {"name": "World B — Food Subsidy", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
+                 "disaster_severity": float(exp_severity),
+                 "policies": {"food_subsidy": float(exp_food_subsidy), "interest_rate": float(exp_interest_rate),
+                              "healthcare_spending": float(exp_healthcare)}},
+                {"name": "World C — Emergency Employment", "disaster": exp_disaster, "disaster_duration": int(exp_duration),
+                 "disaster_severity": float(exp_severity), "emergency_employment": True},
+            ],
+        }
+        resp = api_post("/experiments/run", exp_request)
+        if resp.ok:
+            st.session_state["last_experiment"] = resp.json()
+        else:
+            st.error(resp.text)
+
+    experiment = st.session_state.get("last_experiment")
+    if experiment:
+        control_metrics = experiment["control"]["metrics"]
+        rows = [{"world": "Control (no disaster)", **control_metrics}]
+        for s in experiment["scenarios"]:
+            rows.append({"world": s["name"], **s["metrics"]})
+        result_df = pd.DataFrame(rows)
+
+        st.markdown("#### Results")
+        st.dataframe(
+            result_df[
+                ["world", "food_price_index", "unemployment_rate", "employment", "business_failures",
+                 "health_incidents", "avg_household_wealth", "avg_household_stress"]
+            ],
+            use_container_width=True,
+        )
+
+        chart_metrics = ["food_price_index", "unemployment_rate", "business_failures", "health_incidents"]
+        melted = result_df[result_df["world"] != "Control (no disaster)"][["world"] + chart_metrics].melt(
+            id_vars="world", var_name="metric", value_name="value"
+        )
+        st.altair_chart(
+            alt.Chart(melted)
+            .mark_bar()
+            .encode(
+                x=alt.X("world:N", title=None, axis=alt.Axis(labels=False)),
+                y=alt.Y("value:Q"),
+                color=alt.Color("world:N", title=None),
+                column=alt.Column("metric:N", title=None),
+                tooltip=["world", "metric", "value"],
+            )
+            .properties(height=260, width=140)
+            .resolve_scale(y="independent"),  # each metric has its own scale -- unemployment_rate
+            # (0-1) would otherwise look flat next to health_incidents (100s)
+            use_container_width=False,
+        )
+
+        st.markdown("#### Why did one world do better? Trace it.")
+        st.caption(
+            "Activate a world below, then use the Events & Causality tab's trace tool on any of "
+            "its events — every divergence is individually inspectable, not just a different number."
+        )
+        world_options = {experiment["control"]["simulation_id"]: "Control"} | {
+            s["simulation_id"]: s["name"] for s in experiment["scenarios"]
+        }
+        chosen_world = st.selectbox(
+            "Inspect a world", list(world_options), format_func=lambda sid: world_options[sid], key="exp_inspect"
+        )
+        if st.button("Activate this world"):
+            resp = api_post(f"/simulation/activate/{chosen_world}")
+            st.write(resp.json() if resp.ok else resp.text)
+    else:
+        st.caption("Run an experiment to see results here.")
+
+# ============================================================================
+# Citizens (SRS §30.2)
+# ============================================================================
+with tabs[3]:
     citizens_df = pd.DataFrame(api_get("/citizens"))
     st.dataframe(
         citizens_df[["citizen_id", "name", "age", "occupation", "employer_id", "salary", "savings", "stress"]],
@@ -418,7 +530,7 @@ with tabs[2]:
 # ============================================================================
 # Households (SRS §30.3)
 # ============================================================================
-with tabs[3]:
+with tabs[4]:
     households_df = pd.DataFrame(api_get("/households"))
     households_df["members"] = households_df["member_ids"].apply(len)
     st.dataframe(
@@ -459,7 +571,7 @@ with tabs[3]:
 # ============================================================================
 # Businesses (SRS §30.4)
 # ============================================================================
-with tabs[4]:
+with tabs[5]:
     businesses_df = pd.DataFrame(api_get("/businesses"))
     st.dataframe(businesses_df, use_container_width=True, height=250)
     employer_ids = sorted(businesses_df["business_id"].tolist()) if len(businesses_df) else []
@@ -498,7 +610,7 @@ with tabs[4]:
 # ============================================================================
 # Events & Causality (SRS §30.6, §22-23)
 # ============================================================================
-with tabs[5]:
+with tabs[6]:
     events_df = pd.DataFrame(api_get("/events", limit=500))
     if len(events_df):
         ev_col1, ev_col2 = st.columns(2)
@@ -546,7 +658,7 @@ with tabs[5]:
 # ============================================================================
 # AI Agents (SRS §30.7)
 # ============================================================================
-with tabs[6]:
+with tabs[7]:
     hist_col, gov_col = st.columns(2)
     with hist_col:
         st.markdown("**Historian Agent**")
@@ -584,7 +696,7 @@ with tabs[6]:
 # ============================================================================
 # Alternate Timelines (SRS §27-29)
 # ============================================================================
-with tabs[7]:
+with tabs[8]:
     st.markdown("**Branch the current simulation**")
     new_id = st.text_input("New simulation_id", value=f"{status['simulation_id']}_branch")
     if st.button("🌿 Branch"):

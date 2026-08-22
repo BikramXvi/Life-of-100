@@ -111,6 +111,46 @@ apply) is identical regardless of provider; `agents/base.py` isolates the SDK ca
   current operational state" claim in `README.md`/`PROGRESS.md` is now actually true, not just
   documented as true.
 
+## Added since the last pass: the "What If?" Engine
+
+This is the direct answer to "the system must let you experimentally compare possible futures,"
+not a new UI decoration:
+
+- **`life100/simulation/experiments.py`** — `run_experiment(base_engine, scenarios, ticks)` takes
+  the CURRENT live simulation, deep-copies it via `branch_simulation` once per scenario (plus one
+  untouched control), applies each scenario's disaster/policy/stimulus, runs every branch for the
+  same number of ticks, and returns real measured `pct_change_vs_control` numbers — never
+  hand-written outcomes. All resulting engines are registered into `state.simulations` (a real bug
+  caught and fixed before it shipped: the first version ran the branches but never made them
+  reachable through the API).
+- **`POST /experiments/run`** (`life100/api/routers/experiments.py`) and the dashboard's **"What
+  If? Lab"** tab: pick a disaster + severity + duration, a Government intervention (food subsidy /
+  interest rate / healthcare funding) for World B, and an Emergency Employment stimulus for World
+  C, then run all three plus a no-disaster Control side by side with a real comparison table and
+  independently-scaled bar charts (a `resolve_scale(y="independent")` fix was required — otherwise
+  a 0–1-scale metric like `unemployment_rate` visually flatlined next to a 100s-scale metric like
+  `health_incidents` in the same chart).
+- **Verified live, not just unit-tested:** one branch point, three interventions, genuinely
+  different and non-obvious results — Food Subsidy and Emergency Employment aren't simply
+  "better/worse," they trade off differently across runs (one run: Food Subsidy beat Emergency
+  Employment on unemployment but lost on business failures; a later run at a different branch
+  point had Emergency Employment sweep every metric). That run-to-run variability is itself
+  evidence the outcome isn't scripted — a scripted demo would print the same "moral" every time.
+- **`trigger_drought()` gained a `severity` parameter** (previously a fixed `DROUGHT_INITIAL_SHOCK`)
+  so the initial shock size — and now also the food-price ramp rate — actually varies with the
+  slider, making a future sensitivity-analysis sweep (SCOPE.md's still-open "find the tipping
+  point" item) possible without touching the economy model.
+- **`government.healthcare_spending` was decorative until now** — stored on the `Government`
+  dataclass and settable via the Government Agent's policy proposals, but no mechanic ever read
+  it. `decisions.py`'s `_decide_healthcare()` now scales both access chance and out-of-pocket cost
+  with funding level, so the What If Lab's "Healthcare funding" slider does something real; the
+  agent-facing schema/validator (`agents/government.py`, `agents/validator.py`) were extended to
+  match.
+- **`trigger_emergency_employment_program()`** is a new disaster-module function but is not a
+  disaster — it reuses the existing `broad_demand_shock` mechanism with a negative magnitude (a
+  positive demand shock), so re-employment happens through the same hiring mechanics every other
+  scenario uses, rather than a hand-scripted "everyone gets hired" event.
+
 ## Explicitly out of scope (matches SRS §45's own list, not a cut)
 
 Multiple cities, inter-city trade, political elections, cultural evolution, reinforcement
