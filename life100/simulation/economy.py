@@ -19,6 +19,12 @@ from __future__ import annotations
 
 from life100.events.schemas import EventType
 from life100.simulation.engine import SimulationEngine
+from life100.simulation.resources import (
+    DROUGHT_PRODUCTION_MULTIPLIER,
+    FOOD_CONSUMPTION_PER_CAPITA,
+    FOOD_YIELD_PER_WORKER,
+    RAW_MATERIAL_USE_PER_WORKER,
+)
 
 FOOD_INDUSTRIES = ("food_production", "food_retail")
 BASE_REVENUE_PER_EMPLOYEE = 300.0
@@ -40,6 +46,7 @@ def run_tick(engine: SimulationEngine) -> None:
     _update_food_price(engine)
     _update_businesses(engine)
     _update_households(engine)
+    _update_resources(engine)
 
 
 def _expire_disasters(engine: SimulationEngine) -> None:
@@ -145,3 +152,29 @@ def _update_households(engine: SimulationEngine) -> None:
                 member.stress = round(min(1.0, member.stress + 0.03), 3)
         else:
             household.financial_stress = round(max(0.0, household.financial_stress - 0.02), 3)
+
+
+def _update_resources(engine: SimulationEngine) -> None:
+    """Tracks SRS §6.7 resource stocks alongside the price mechanism above
+    (additive, doesn't change food_price_index itself — see resources.py)."""
+    food_producers = [b for b in engine.businesses.values() if b.active and b.industry == "food_production"]
+    manufacturers = [b for b in engine.businesses.values() if b.active and b.industry == "manufacturing"]
+
+    yield_multiplier = DROUGHT_PRODUCTION_MULTIPLIER if "drought" in engine.active_disasters else 1.0
+    production = sum(b.headcount() for b in food_producers) * FOOD_YIELD_PER_WORKER * yield_multiplier
+    consumption = len(engine.citizens) * FOOD_CONSUMPTION_PER_CAPITA
+    engine.resources.food_stock = max(0.0, round(engine.resources.food_stock - consumption + production, 2))
+
+    raw_material_use = sum(b.headcount() for b in manufacturers) * RAW_MATERIAL_USE_PER_WORKER
+    if raw_material_use > 0:
+        engine.resources.raw_materials_stock = max(0.0, round(engine.resources.raw_materials_stock - raw_material_use, 2))
+        engine.emit(
+            EventType.RESOURCE_EXTRACTED,
+            source_entity="resources",
+            source_type="environment",
+            payload={
+                "resource": "raw_materials",
+                "amount": raw_material_use,
+                "remaining": engine.resources.raw_materials_stock,
+            },
+        )

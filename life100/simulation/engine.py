@@ -15,7 +15,9 @@ from life100.events.schemas import Event, EventType
 from life100.events.store import EventLog
 from life100.simulation.business import Business
 from life100.simulation.citizens import Citizen
+from life100.simulation.government import POLICY_FIELD_MAP, Government
 from life100.simulation.households import Household
+from life100.simulation.resources import Resources
 from life100.simulation.world import World
 
 
@@ -45,6 +47,9 @@ class SimulationEngine:
         self.food_price_index = 1.0
         self.active_disasters: dict[str, dict] = {}
         self.policies: dict[str, float] = {}
+        self.government = Government()
+        self.resources = Resources()
+        self.relationships: dict[str, list] = {}  # citizen_id -> list["Relationship"], see social.py
 
     # -- event plumbing -----------------------------------------------
 
@@ -126,7 +131,12 @@ def _apply_disaster_ended(engine: SimulationEngine, event: Event) -> None:
 
 
 def _apply_policy_changed(engine: SimulationEngine, event: Event) -> None:
-    engine.policies[event.payload["policy"]] = float(event.payload["value"])
+    policy = event.payload["policy"]
+    value = float(event.payload["value"])
+    engine.policies[policy] = value
+    field_name = POLICY_FIELD_MAP.get(policy)
+    if field_name:
+        setattr(engine.government, field_name, value)
 
 
 def _noop(engine: SimulationEngine, event: Event) -> None:

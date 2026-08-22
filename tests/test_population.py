@@ -40,3 +40,30 @@ def test_businesses_hire_working_age_citizens():
     industries = {b.industry for b in businesses}
     assert "food_production" in industries
     assert "food_retail" in industries
+
+
+def test_couples_are_recorded_as_married_to_each_other():
+    citizens, _ = generate_population(SEED, n=100)
+    by_id = {c.citizen_id: c for c in citizens}
+    married = [c for c in citizens if c.marital_status == "married"]
+    assert married, "expected at least one married couple in a 100-citizen population"
+    for citizen in married:
+        spouse = by_id[citizen.spouse_id]
+        assert spouse.spouse_id == citizen.citizen_id
+        assert spouse.marital_status == "married"
+
+
+def test_parent_child_ties_are_reciprocal():
+    citizens, _ = generate_population(SEED, n=100)
+    by_id = {c.citizen_id: c for c in citizens}
+    children_with_parents = [c for c in citizens if c.parent_ids]
+    assert children_with_parents
+    for child in children_with_parents:
+        for parent_id in child.parent_ids:
+            assert child.citizen_id in by_id[parent_id].children_ids
+
+
+def test_adults_have_goals():
+    citizens, _ = generate_population(SEED, n=50)
+    adults = [c for c in citizens if c.age >= 18]
+    assert all(c.goals is not None for c in adults)
