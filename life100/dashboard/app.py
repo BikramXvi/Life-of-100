@@ -253,8 +253,25 @@ with st.sidebar:
         st.divider()
         st.subheader("Introduce a specific disaster")
         disaster_label = st.selectbox("Disaster", list(DISASTER_ENDPOINTS), key="adv_disaster")
+        disaster_payload: dict = {}
+        if disaster_label == "Drought":
+            disaster_payload["severity"] = st.slider("Severity", 0.1, 1.0, 0.4, step=0.05, key="adv_drought_severity")
+        elif disaster_label in ("Flood", "Earthquake"):
+            # damage_fraction/affected_share are exposed here for the first
+            # time -- previously only reachable by calling trigger_flood()/
+            # trigger_earthquake() directly in Python, which is part of why
+            # their "structural collapse" failure path went untested at any
+            # realistic magnitude (see PROOF.md).
+            disaster_payload["damage_fraction"] = st.slider(
+                "Damage fraction", 0.1, 1.0, 0.7, step=0.05, key="adv_damage_fraction",
+                help="Fraction of each affected business's cash wiped out. A business fails "
+                     "outright if what's left can't cover its own operating expenses.",
+            )
+            disaster_payload["affected_share"] = st.slider(
+                "Share of businesses affected", 0.05, 1.0, 0.3, step=0.05, key="adv_affected_share"
+            )
         if st.button(f"Introduce {disaster_label}", key="adv_disaster_btn"):
-            resp = api_post(DISASTER_ENDPOINTS[disaster_label], {})
+            resp = api_post(DISASTER_ENDPOINTS[disaster_label], disaster_payload)
             st.write(resp.json() if resp.ok else resp.text)
 
     if st.session_state["entered_city"] and st.button("Return to landing screen"):

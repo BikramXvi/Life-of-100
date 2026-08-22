@@ -13,6 +13,7 @@ router = APIRouter(prefix="/disasters", tags=["disasters"])
 
 class DroughtRequest(BaseModel):
     duration_ticks: int = DEFAULT_DROUGHT_DURATION_TICKS
+    severity: float | None = None
 
 
 class DisasterRequest(BaseModel):
@@ -42,7 +43,7 @@ def _handle(trigger_fn, engine: SimulationEngine, **kwargs) -> dict:
 
 @router.post("/drought")
 def start_drought(payload: DroughtRequest, engine: SimulationEngine = Depends(get_engine)) -> dict:
-    return _handle(disasters.trigger_drought, engine, duration_ticks=payload.duration_ticks)
+    return _handle(disasters.trigger_drought, engine, duration_ticks=payload.duration_ticks, severity=payload.severity)
 
 
 @router.post("/food-shortage")

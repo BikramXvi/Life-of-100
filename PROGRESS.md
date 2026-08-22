@@ -362,3 +362,21 @@ real — not a manufactured or flattering result.
   plus an API-level test confirming both endpoints accept the new parameters.
 - **87 passed, 2 skipped** (`uv run pytest -q`).
 - Full write-up with all real numbers in `PROOF.md` §2.
+
+## 2026-08-22 (same day, later still) — follow-up: robustness + demoable fix
+
+- **Second robustness check**: re-ran the 10-seed sweep for `disease_outbreak`/`economic_recession`'s
+  `unemployment_rate` tipping point. Both cluster even tighter than drought's (mean 0.469 ± 0.016,
+  9/10 seeds). Their per-seed results came out byte-identical, which turned out to be real, not a
+  bug in the sweep: `trigger_economic_recession` is mechanically identical to `disease_outbreak`'s
+  demand-shock component — the comparison shows `disease_outbreak`'s own direct `HEALTH_IMPACTED`
+  citizen effects have **no measurable effect on unemployment within 15 ticks**, a genuinely
+  disclosed side-finding, not silently smoothed over.
+- **Made the earthquake/flood fix demoable, not just API-reachable**: added `Damage fraction`/
+  `Share of businesses affected` sliders (Advanced Controls > "Introduce a specific disaster",
+  shown for Flood/Earthquake) and a `Severity` slider for Drought — previously that control only
+  sent an empty payload, always using hardcoded Python defaults. Verified live: selecting
+  Earthquake now shows both sliders defaulting to the realistic 0.70/0.30 values, with a tooltip
+  explaining the insolvency-based failure condition.
+- `/disasters/drought` now also accepts `severity` (previously only `duration_ticks`).
+- 87 passed, 2 skipped (`uv run pytest -q`); full write-up in `PROOF.md` §2.

@@ -157,6 +157,27 @@ weakened by a drought does not:
 `tests/test_disasters.py::test_a_realistic_damage_fraction_can_also_fail_an_already_weakened_business`
 locks this in as a regression test.
 
+**Follow-up robustness check, and an honest side-finding.** Re-ran the same 10-seed sweep for
+`disease_outbreak` and `economic_recession`'s own `demand_magnitude`, watching `unemployment_rate`
+this time (the metric each of them actually breaks, per the original single-seed sweep):
+
+| Disaster | Seeds with a tipping point | Mean bracket midpoint | Stdev |
+|---|---|---|---|
+| `disease_outbreak` | 9 / 10 | 0.469 | 0.016 |
+| `economic_recession` | 9 / 10 | 0.469 | 0.016 |
+
+Both cluster even tighter than drought's. But the two disasters' *entire* per-seed result series
+came out byte-identical — worth checking rather than reporting two tables and moving on.
+`trigger_economic_recession` turns out to be exactly `_start_disaster(kind="broad_demand_shock",
+magnitude=demand_magnitude)` — mechanically identical to `disease_outbreak`'s demand-shock
+component. `disease_outbreak` additionally emits a direct `HEALTH_IMPACTED` event to ~35% of
+citizens, which the identical results show has **no measurable effect on unemployment within this
+15-tick window** — the entire employment effect comes from the shared demand-shock mechanism, not
+from the disease's own distinguishing feature. Not a bug: a citizen's health hit raises stress,
+and stress feeds into `demand_multiplier` (the same channel drought uses) — but that's a slower,
+indirect path that plausibly needs longer than 15 days to show up, unlike the immediate shock. A
+genuinely disclosed observation, not a manufactured "both diseases matter equally" conclusion.
+
 ---
 
 ## 3. The system can be experimentally used to compare possible futures
