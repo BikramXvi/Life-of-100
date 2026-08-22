@@ -19,6 +19,7 @@ from life100.api.routers import (  # noqa: E402
     experiments,
     households,
     observability,
+    sensitivity,
     simulation,
     warehouse,
     world,
@@ -44,6 +45,7 @@ app.include_router(warehouse.router)
 app.include_router(observability.router)
 app.include_router(world.router)
 app.include_router(experiments.router)
+app.include_router(sensitivity.router)
 app.include_router(analytics.router)
 
 

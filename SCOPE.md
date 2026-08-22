@@ -151,6 +151,33 @@ not a new UI decoration:
   positive demand shock), so re-employment happens through the same hiring mechanics every other
   scenario uses, rather than a hand-scripted "everyone gets hired" event.
 
+## Added since the last pass: Sensitivity Analysis (find the tipping point)
+
+- **`life100/simulation/sensitivity.py`** (new) — `run_sensitivity_sweep()` branches the CURRENT
+  simulation once per swept value of `drought_severity` (a real, independent run each time, not an
+  interpolated guess), then flags a tipping point per metric only when a step's |slope| is both
+  the sweep's maximum AND at least `TIPPING_RATIO=3.0`x the median |slope| of every other step —
+  a disproportionate jump, not just the largest of several similar changes. A metric with no such
+  step is reported as having no detected tipping point, never forced to show one. When a candidate
+  IS found, a second, real refinement sweep re-samples inside that bracket to narrow it further.
+- **`POST /experiments/sensitivity`** + a new "Sensitivity Analysis" section in the dashboard's
+  What If? Lab tab: pick a severity range and step count, run the sweep, see the full
+  severity-response curve per metric with the detected tipping-point bracket shaded, or an honest
+  "no tipping point — response is smooth" caption when none was found.
+- **A genuine, mechanistically-explainable finding, not a manufactured one:** at `ticks=15`,
+  `business_failures` stays at exactly zero for every severity from 0.05–0.30, then real
+  businesses start failing above ~0.40 (refined to 0.433–0.442). This isn't a hardcoded
+  threshold — `economy._update_businesses` only lays off/fails a business once its cumulative
+  `cash` crosses zero, a hard per-business condition sitting on top of a smooth, linear function
+  of severity. `unemployment_rate` and `avg_household_stress`, swept over the same range, show
+  **no** detected tipping point (a smooth response) — reported honestly as such, which is itself
+  part of the evidence the detector isn't tuned to always find something. See `PROOF.md` §2 for
+  the full write-up.
+- **Why `ticks=15`, not 30:** empirically verified (`test_food_price_and_stress_saturate_at_the_default_30_tick_window`)
+  that at 30 ticks both `food_price_index` and `avg_household_stress` saturate at their hard caps
+  for every severity in the swept range, erasing the very differentiation the sweep exists to
+  find — the same saturation issue documented earlier for the drought-severity unit test.
+
 ## Explicitly out of scope (matches SRS §45's own list, not a cut)
 
 Multiple cities, inter-city trade, political elections, cultural evolution, reinforcement

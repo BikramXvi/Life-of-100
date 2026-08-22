@@ -163,8 +163,10 @@ curl -X POST localhost:8000/warehouse/build-snowflake   # real Snowflake, if SNO
 
 **9. Or just use the dashboard** at http://localhost:8501 — 9 tabs: World View (3D city render),
 City Dashboard, **What If? Lab** (branch the live city into a Control plus several intervention
-worlds and compare real measured outcomes side by side), Citizens, Households, Businesses, Events
-& Causality, AI Agents, and Alternate Timelines.
+worlds and compare real measured outcomes side by side, plus a **Sensitivity Analysis** section
+that sweeps drought severity and locates a genuine tipping point in business failures, not a
+manufactured one), Citizens, Households, Businesses, Events & Causality, AI Agents, and Alternate
+Timelines.
 
 ## Tests
 
@@ -172,14 +174,14 @@ worlds and compare real measured outcomes side by side), Citizens, Households, B
 uv run pytest -q
 ```
 
-77 tests (2 skip gracefully without a reachable Postgres), no external infra otherwise required:
+84 tests (2 skip gracefully without a reachable Postgres), no external infra otherwise required:
 world/population/relationship determinism, the drought→cascade mechanism, all seven disasters,
 the decision engine, life events, all four agents' validator accept/reject bounds, causal-chain
-tracing, alternate-history branching, the "What If?" experiment engine, and full FastAPI
-end-to-end flows — plus `test_emergence.py`'s dedicated proofs that the system isn't scripted, is
-emergent, and is experimentally comparable (see `PROOF.md`). All Gemini calls in the test suite
-are mocked (`unittest.mock`) — no live API traffic runs during `pytest`; the walkthrough above is
-how to exercise the real calls.
+tracing, alternate-history branching, the "What If?" experiment engine, the sensitivity-analysis
+tipping-point detector, and full FastAPI end-to-end flows — plus `test_emergence.py`'s dedicated
+proofs that the system isn't scripted, is emergent, and is experimentally comparable (see
+`PROOF.md`). All Gemini calls in the test suite are mocked (`unittest.mock`) — no live API traffic
+runs during `pytest`; the walkthrough above is how to exercise the real calls.
 
 ## Project documents
 

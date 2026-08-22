@@ -170,3 +170,42 @@ on the society, not just narrate that it could.
   real divergent numbers each run — e.g. one run had Food Subsidy beat Emergency Employment on
   unemployment but lose on business failures; a later run at a different branch point had
   Emergency Employment sweep every metric instead. See `SCOPE.md` for the full write-up.
+
+## 2026-08-22 (same day, later) — Sensitivity Analysis: find the tipping point
+
+Direct response to "of everything, sensitivity-analysis tipping points is the one I'd prioritize."
+
+- `life100/simulation/sensitivity.py` (new) — `run_sensitivity_sweep()`: sweeps `drought_severity`,
+  branching the live simulation once per value, and detects a tipping point per metric via a
+  disclosed slope-ratio test (a step's |slope| must be the sweep's max AND ≥3x the median of every
+  other step), with an automatic refinement pass narrowing any bracket found. A metric with no
+  qualifying step is reported as having no tipping point — never forced.
+- New `POST /experiments/sensitivity` endpoint (`life100/api/routers/sensitivity.py`) and a
+  "Sensitivity Analysis" section in the dashboard's What If? Lab tab: severity range + step count
+  + duration sliders, per-metric line charts with the detected bracket shaded in red, or an honest
+  "no tipping point — response is smooth" note.
+- Fixed a real integration bug found only by testing the full sequence end to end: sweeping
+  `drought_severity` from an already-mid-drought active simulation (e.g. right after running a
+  What If Lab experiment) raised `"A drought is already active"`, since each swept branch tried to
+  trigger a second drought on top of one inherited from the base state. Fixed with
+  `_end_disaster_if_active()`, which ends the branch's copy of that disaster via a real
+  `DISASTER_ENDED` event (CLAUDE.md rule 4: still only through the event system) before applying
+  the swept severity — safe because each branch is a disposable copy.
+- **Genuine, empirically-discovered finding** (not decided in advance): at `ticks=15`,
+  `business_failures` is exactly 0 for every severity 0.05–0.30, then real businesses start
+  failing above ~0.40 (refined to severity 0.433–0.442). The mechanism was already in the code —
+  `economy._update_businesses` lays off/fails a business only once cumulative `cash` crosses
+  zero, a hard per-business threshold sitting on top of a smooth, linear function of severity —
+  nothing was added to manufacture this result. `unemployment_rate`/`avg_household_stress` swept
+  over the same range show no detected tipping point (genuinely smooth), reported as such. Also
+  found empirically: `ticks=30` (the What If Lab's default) saturates `food_price_index` and
+  `avg_household_stress` at their caps for every severity, hiding this differentiation entirely —
+  which is why the sensitivity sweep defaults to `ticks=15` instead. Full write-up with the actual
+  numbers: `PROOF.md` §2, `SCOPE.md`.
+- **84 passed, 2 skipped** (`uv run pytest -q`) after this phase, including the new
+  `tests/test_sensitivity.py` (9 tests: determinism, input validation, the "no tipping point"
+  case, a synthetic step-detection case, the real business_failures finding, and the 30-tick
+  saturation finding) plus a `/experiments/sensitivity` end-to-end test in `test_api.py`.
+- Verified live against the real Docker stack (not just pytest): `POST /experiments/sensitivity`
+  through the containerized API reproduced the identical tipping-point bracket, and the dashboard
+  section renders the shaded-band charts and honest "no tipping point" captions correctly.

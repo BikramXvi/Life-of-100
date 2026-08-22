@@ -85,6 +85,29 @@ from the same simple rules, not something anyone coded. An experiment correcting
 built the mechanism is itself evidence this isn't scripted toward a foregone conclusion; if it
 were, it would have confirmed what I expected.
 
+**A genuine tipping point falls out of a smooth rule, with no threshold constant anywhere**
+(`tests/test_sensitivity.py::test_business_failures_shows_a_real_threshold_around_drought_severity_0_4`,
+`life100/simulation/sensitivity.py`): sweep drought severity from 0.05 to 0.50 (10 branches from
+the identical starting state, 15 days each) and measure `business_failures`. Nothing in
+`economy.py` mentions a "tipping severity" — a business only lays off/fails once its cumulative
+`cash` crosses zero, and `cash` is driven by a purely linear function of severity
+(`demand_multiplier`/`cost_multiplier`). Swept for real, the result is not linear at the
+aggregate level:
+
+| Severity | 0.05–0.30 | 0.35 | 0.40 | **0.45** | 0.50 |
+|---|---|---|---|---|---|
+| business_failures | 0 | 0 | 0 | **2** | 3 |
+
+The sweep's own slope-ratio detector (a step's |slope| must be ≥3× the median of every other
+step — see `sensitivity.py`'s methodology docstring for the exact test) independently locates the
+jump between severity 0.40–0.45, then a refinement pass narrows it to **0.433–0.442**, all without
+being told where to look. `health_incidents` and `avg_household_wealth` show the same located
+jump (a real, correlated consequence, not a coincidence); `unemployment_rate` and
+`avg_household_stress` are reported as having **no detected tipping point** in this range — a
+smooth, gradual response — because they genuinely are smooth, not because the detector was tuned
+to always find something. That "no tipping point" verdict for two of the six swept metrics is
+itself part of the proof: a manufactured finding would have flagged all six.
+
 ---
 
 ## 3. The system can be experimentally used to compare possible futures

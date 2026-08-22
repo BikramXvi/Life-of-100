@@ -461,6 +461,91 @@ with tabs[2]:
     else:
         st.caption("Run an experiment to see results here.")
 
+    st.divider()
+    st.markdown("#### Sensitivity Analysis — find the tipping point")
+    st.caption(
+        "Sweeps drought severity across a range, branches an independent world at each value "
+        "from the CURRENT simulation, and looks for a point where the response changes "
+        "disproportionately — not just proportionally. A metric with a smooth response across "
+        "the range is reported as having no tipping point, never forced to show one."
+    )
+
+    sens_col1, sens_col2, sens_col3 = st.columns(3)
+    with sens_col1:
+        sens_min = st.slider("Minimum severity", 0.05, 0.45, 0.05, step=0.05, key="sens_min")
+    with sens_col2:
+        sens_max = st.slider("Maximum severity", 0.1, 1.0, 0.5, step=0.05, key="sens_max")
+    with sens_col3:
+        sens_steps = st.slider("Number of steps", 4, 16, 10, key="sens_steps")
+    sens_ticks = st.slider(
+        "Days to run each branch",
+        3,
+        30,
+        15,
+        key="sens_ticks",
+        help=(
+            "Kept below 30 by default: at 30 ticks food_price_index and avg_household_stress "
+            "both saturate at their caps for every severity, hiding the very differentiation "
+            "this sweep exists to find."
+        ),
+    )
+
+    if st.button("🔬 Run Sensitivity Sweep", type="primary"):
+        if sens_max <= sens_min:
+            st.error("Maximum severity must be greater than minimum severity.")
+        else:
+            step_size = (sens_max - sens_min) / (sens_steps - 1)
+            sweep_values = [round(sens_min + i * step_size, 4) for i in range(sens_steps)]
+            resp = api_post(
+                "/experiments/sensitivity",
+                {"parameter": "drought_severity", "values": sweep_values, "ticks": int(sens_ticks)},
+            )
+            if resp.ok:
+                st.session_state["last_sensitivity"] = resp.json()
+            else:
+                st.error(resp.text)
+
+    sensitivity = st.session_state.get("last_sensitivity")
+    if sensitivity:
+        st.caption(sensitivity["methodology"])
+        sens_df = pd.DataFrame(sensitivity["metrics_by_value"])
+        sens_df.insert(0, "severity", sensitivity["values"])
+
+        sens_metrics = ["business_failures", "unemployment_rate", "health_incidents", "avg_household_wealth"]
+        sens_chart_cols = st.columns(2)
+        for idx, metric in enumerate(sens_metrics):
+            tp = sensitivity["tipping_points"].get(metric)
+            line = (
+                alt.Chart(sens_df)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("severity:Q", title="Drought severity"),
+                    y=alt.Y(f"{metric}:Q"),
+                    tooltip=["severity", metric],
+                )
+                .properties(height=200, title=metric)
+            )
+            with sens_chart_cols[idx % 2]:
+                if tp:
+                    lo, hi = tp["bracket"]
+                    band = (
+                        alt.Chart(pd.DataFrame({"lo": [lo], "hi": [hi]}))
+                        .mark_rect(opacity=0.2, color="red")
+                        .encode(x="lo:Q", x2="hi:Q")
+                    )
+                    st.altair_chart(band + line, use_container_width=True)
+                    refined = tp.get("refined_bracket")
+                    located = f"{refined[0]:.3f}–{refined[1]:.3f}" if refined else f"{lo:.2f}–{hi:.2f}"
+                    st.success(
+                        f"**Tipping point in `{metric}`**: severity {located} "
+                        f"(jump {tp['ratio']:.1f}× the typical step)."
+                    )
+                else:
+                    st.altair_chart(line, use_container_width=True)
+                    st.caption(f"No tipping point detected in `{metric}` — response is smooth across this range.")
+    else:
+        st.caption("Run a sweep to see the severity-response curve and any detected tipping point.")
+
 # ============================================================================
 # Citizens (SRS §30.2)
 # ============================================================================

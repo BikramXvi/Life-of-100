@@ -94,6 +94,26 @@ def test_full_demo_flow_without_external_infra():
     assert activate.status_code == 200
     assert client.get("/citizens").status_code == 200
 
+    sensitivity = client.post(
+        "/experiments/sensitivity",
+        json={"values": [0.1, 0.2, 0.3, 0.4], "ticks": 5},
+    )
+    assert sensitivity.status_code == 200
+    sbody = sensitivity.json()
+    assert sbody["parameter"] == "drought_severity"
+    assert len(sbody["metrics_by_value"]) == 4
+    assert set(sbody["tipping_points"]) == {
+        "unemployment_rate",
+        "business_failures",
+        "avg_household_stress",
+        "food_price_index",
+        "health_incidents",
+        "avg_household_wealth",
+    }
+
+    bad_sweep = client.post("/experiments/sensitivity", json={"parameter": "not_a_real_parameter"})
+    assert bad_sweep.status_code == 400
+
 
 def test_endpoints_require_a_started_simulation():
     # A process-wide singleton means this depends on test order in this
