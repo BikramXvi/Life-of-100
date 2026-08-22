@@ -1,0 +1,33 @@
+"""LIFE/100 FastAPI application — the primary interface for this
+submission (see SCOPE.md). Auto-generated docs at /docs."""
+
+from __future__ import annotations
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from fastapi import FastAPI  # noqa: E402 — must follow load_dotenv()
+
+from life100.api.routers import ai, citizens, disasters, events, simulation, warehouse  # noqa: E402
+
+app = FastAPI(
+    title="LIFE/100 API",
+    description=(
+        "A depth-first, ~100-citizen digital society simulation. "
+        "Only 100 people. Every life matters."
+    ),
+    version="0.1.0",
+)
+
+app.include_router(simulation.router)
+app.include_router(citizens.router)
+app.include_router(events.router)
+app.include_router(disasters.router)
+app.include_router(ai.router)
+app.include_router(warehouse.router)
+
+
+@app.get("/health", tags=["meta"])
+def health() -> dict:
+    return {"status": "ok"}
