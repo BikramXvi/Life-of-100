@@ -162,6 +162,9 @@ def _apply_school_attended(engine: SimulationEngine, event: Event) -> None:
     if citizen is None:
         return
     citizen.academic_performance = round(min(1.0, citizen.academic_performance + 0.01), 3)
+    upgrade_to = event.payload.get("upgrade_to")
+    if upgrade_to:
+        citizen.education_level = upgrade_to
 
 
 def _apply_health_impacted(engine: SimulationEngine, event: Event) -> None:
@@ -184,21 +187,51 @@ def _apply_medical_visit(engine: SimulationEngine, event: Event) -> None:
 
 
 def _apply_loan_created(engine: SimulationEngine, event: Event) -> None:
+    amount = float(event.payload["amount"])
+    if event.source_type == "business":
+        business = engine.businesses.get(event.source_entity)
+        if business is None:
+            return
+        business.cash = round(business.cash + amount, 2)
+        business.debt = round(business.debt + amount, 2)
+        return
     citizen = engine.citizens.get(event.source_entity)
     if citizen is None:
         return
-    amount = float(event.payload["amount"])
     citizen.savings = round(citizen.savings + amount, 2)
     citizen.debt = round(citizen.debt + amount, 2)
 
 
 def _apply_loan_repaid(engine: SimulationEngine, event: Event) -> None:
+    amount = float(event.payload["amount"])
+    if event.source_type == "business":
+        business = engine.businesses.get(event.source_entity)
+        if business is None:
+            return
+        business.cash = round(business.cash - amount, 2)
+        business.debt = round(max(0.0, business.debt - amount), 2)
+        return
     citizen = engine.citizens.get(event.source_entity)
     if citizen is None:
         return
-    amount = float(event.payload["amount"])
     citizen.savings = round(citizen.savings - amount, 2)
     citizen.debt = round(max(0.0, citizen.debt - amount), 2)
+
+
+def _apply_business_expanded(engine: SimulationEngine, event: Event) -> None:
+    business = engine.businesses.get(event.source_entity)
+    if business is None:
+        return
+    business.cash = round(business.cash + float(event.payload.get("amount", 0.0)), 2)
+
+
+def _apply_moved(engine: SimulationEngine, event: Event) -> None:
+    household = engine.households.get(event.payload.get("household_id", ""))
+    if household is None:
+        return
+    new_home = event.payload.get("new_home_building_id")
+    if new_home:
+        household.home_building_id = new_home
 
 
 def _apply_job_started(engine: SimulationEngine, event: Event) -> None:
@@ -377,6 +410,8 @@ _HANDLERS: dict[EventType, Callable[[SimulationEngine, Event], None]] = {
     EventType.JOB_LOST: _apply_job_lost,
     EventType.BUSINESS_FAILED: _apply_business_failed,
     EventType.BUSINESS_CONTRACTED: _apply_business_contracted,
+    EventType.BUSINESS_EXPANDED: _apply_business_expanded,
+    EventType.MOVED: _apply_moved,
     EventType.PRICE_CHANGED: _apply_price_changed,
     EventType.DISASTER_STARTED: _apply_disaster_started,
     EventType.DISASTER_ENDED: _apply_disaster_ended,

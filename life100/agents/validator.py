@@ -16,6 +16,20 @@ ALLOWED_POLICY_ACTIONS: dict[str, tuple[float, float]] = {
     "tax_rate": (0.0, 0.6),
     "interest_rate": (0.0, 0.3),
 }
+BUSINESS_ACTION_BOUNDS: dict[str, tuple[float, float]] = {
+    "hire": (1, 5),
+    "fire": (1, 5),
+    "expand": (500, 20_000),
+    "contract": (0.05, 0.5),
+    "take_loan": (500, 20_000),
+}
+HOUSEHOLD_ACTION_BOUNDS: dict[str, tuple[float, float]] = {
+    "accept_job_offer": (0, 1),
+    "take_major_loan": (1_000, 20_000),
+    "move_house": (0, 1),
+    "pursue_education": (0, 1),
+    "decline": (0, 1),
+}
 MIN_RATIONALE_LENGTH = 10
 
 
@@ -44,3 +58,40 @@ def validate_policy_proposal(proposal: dict[str, Any]) -> ValidationResult:
         return ValidationResult(False, "rationale is required and must be a substantive explanation")
 
     return ValidationResult(True, "proposal is within policy bounds")
+
+
+def _validate_bounded_proposal(
+    proposal: dict[str, Any],
+    bounds: dict[str, tuple[float, float]],
+    label: str,
+) -> ValidationResult:
+    action = proposal.get("action")
+    value = proposal.get("amount")
+    rationale = proposal.get("rationale", "")
+
+    if action not in bounds:
+        return ValidationResult(False, f"'{action}' is not an allowed {label} action")
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return ValidationResult(False, "amount must be numeric")
+
+    low, high = bounds[action]
+    if not low <= value <= high:
+        return ValidationResult(False, f"amount {value} is outside the allowed range [{low}, {high}] for {action}")
+
+    if not isinstance(rationale, str) or len(rationale) < MIN_RATIONALE_LENGTH:
+        return ValidationResult(False, "rationale is required and must be a substantive explanation")
+
+    return ValidationResult(True, f"proposal is within {label} bounds")
+
+
+def validate_business_proposal(business: Any, proposal: dict[str, Any]) -> ValidationResult:
+    result = _validate_bounded_proposal(proposal, BUSINESS_ACTION_BOUNDS, "business")
+    if not result.approved:
+        return result
+    if proposal.get("action") == "fire" and proposal.get("amount", 0) > business.headcount():
+        return ValidationResult(False, "cannot fire more employees than the business currently has")
+    return result
+
+
+def validate_household_decision(proposal: dict[str, Any]) -> ValidationResult:
+    return _validate_bounded_proposal(proposal, HOUSEHOLD_ACTION_BOUNDS, "household")
