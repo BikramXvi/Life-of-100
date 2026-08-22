@@ -3,17 +3,26 @@
 Thin by design — it only calls the FastAPI endpoints (ROADMAP §4.6: "the
 dashboard MUST NOT become the simulation engine"). FastAPI is the graded
 interface for this submission (SCOPE.md); this is the visual layer on top.
+Charts use Altair (statistical charts) and pydeck (the World View's 3D
+city render) — both ship as Streamlit dependencies already, no extra
+services needed.
 """
 
 from __future__ import annotations
 
 import os
 
+import altair as alt
 import pandas as pd
+import pydeck as pdk
 import requests
 import streamlit as st
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
+
+# A shared dark theme so every chart matches the dashboard's own look
+# rather than Vega-Lite's default light background.
+alt.themes.enable("dark")
 
 
 def api_get(path: str, **params) -> object:
@@ -74,49 +83,100 @@ tabs = st.tabs(
     ["World View", "City Dashboard", "Citizens", "Households", "Businesses", "Events & Causality", "AI Agents", "Alternate Timelines"]
 )
 
-# -- World View (SRS §30.1) ------------------------------------------------
+# ============================================================================
+# World View (SRS §30.1) — a real rendered 3D city, not a flat table.
+# ============================================================================
 ZONE_COLORS = {
-    "residential": "#d9f2d9",
-    "commercial": "#cfe3ff",
-    "industrial": "#f5d6b3",
-    "park": "#a6d9a6",
-    "road": "#d8d8d8",
+    "residential": [96, 176, 96, 140],
+    "commercial": [80, 130, 220, 140],
+    "industrial": [230, 150, 60, 140],
+    "park": [56, 138, 56, 170],
+    "road": [70, 70, 76, 120],
 }
-BUILDING_ICONS = {
-    "home": "🏠",
-    "school": "🏫",
-    "hospital": "🏥",
-    "shop": "🏪",
-    "factory": "🏭",
-    "bank": "🏦",
-    "government": "🏛",
+BUILDING_STYLE = {
+    "home": {"color": [255, 205, 120], "height": 16},
+    "shop": {"color": [110, 175, 255], "height": 28},
+    "factory": {"color": [255, 130, 80], "height": 42},
+    "school": {"color": [175, 130, 255], "height": 34},
+    "hospital": {"color": [255, 90, 90], "height": 38},
+    "bank": {"color": [255, 215, 90], "height": 40},
+    "government": {"color": [235, 235, 235], "height": 52},
 }
+GRID_SCALE = 0.0012  # degrees per grid cell (~130m) -- purely a rendering trick, not real geography
 
 with tabs[0]:
     world = api_get("/world")
-    zone_kind = {(z["x"], z["y"]): z["kind"] for z in world["zones"]}
-    building_icon = {(b["x"], b["y"]): BUILDING_ICONS.get(b["kind"], "?") for b in world["buildings"]}
+    width, height_dim = world["width"], world["height"]
 
-    rows_html = []
-    for y in range(world["height"]):
-        cells = []
-        for x in range(world["width"]):
-            color = ZONE_COLORS.get(zone_kind.get((x, y), "road"), "#eee")
-            icon = building_icon.get((x, y), "")
-            cells.append(
-                f'<td style="background:{color};width:28px;height:28px;text-align:center;'
-                f'font-size:14px;border:1px solid #ffffff33;">{icon}</td>'
-            )
-        rows_html.append(f"<tr>{''.join(cells)}</tr>")
-    st.markdown(
-        f'<table style="border-collapse:collapse">{"".join(rows_html)}</table>',
-        unsafe_allow_html=True,
+    zone_data = [
+        {
+            "polygon": [
+                [(z["x"] + dx) * GRID_SCALE, (z["y"] + dy) * GRID_SCALE]
+                for dx, dy in ((0, 0), (1, 0), (1, 1), (0, 1))
+            ],
+            "color": ZONE_COLORS.get(z["kind"], [90, 90, 90, 100]),
+        }
+        for z in world["zones"]
+    ]
+    building_data = [
+        {
+            "position": [(b["x"] + 0.5) * GRID_SCALE, (b["y"] + 0.5) * GRID_SCALE],
+            "color": BUILDING_STYLE.get(b["kind"], {"color": [200, 200, 200]})["color"],
+            "elevation": BUILDING_STYLE.get(b["kind"], {"height": 20})["height"],
+            "kind": b["kind"],
+            "building_id": b["building_id"],
+        }
+        for b in world["buildings"]
+    ]
+
+    ground_layer = pdk.Layer(
+        "PolygonLayer",
+        zone_data,
+        get_polygon="polygon",
+        get_fill_color="color",
+        stroked=False,
+        filled=True,
+        pickable=False,
     )
-    legend = " &nbsp; ".join(f'<span style="background:{c};padding:2px 6px">{k}</span>' for k, c in ZONE_COLORS.items())
-    st.markdown(legend, unsafe_allow_html=True)
-    st.caption(f"{world['city_id']} — seed {world['seed']} — {world['width']}x{world['height']} grid")
+    building_layer = pdk.Layer(
+        "ColumnLayer",
+        building_data,
+        get_position="position",
+        get_fill_color="color",
+        get_elevation="elevation",
+        radius=32,
+        elevation_scale=1,
+        pickable=True,
+        auto_highlight=True,
+    )
+    view_state = pdk.ViewState(
+        longitude=(width / 2) * GRID_SCALE,
+        latitude=(height_dim / 2) * GRID_SCALE,
+        zoom=16.3,
+        pitch=52,
+        bearing=24,
+    )
+    deck = pdk.Deck(
+        layers=[ground_layer, building_layer],
+        initial_view_state=view_state,
+        map_provider=None,
+        tooltip={"text": "{kind}\n{building_id}"},
+    )
+    st.pydeck_chart(deck, height=560)
 
-# -- City Dashboard (SRS §30.5) ------------------------------------------
+    legend_items = {**ZONE_COLORS, **{k: v["color"] for k, v in BUILDING_STYLE.items()}}
+    legend_cols = st.columns(len(legend_items))
+    for col, (label, color) in zip(legend_cols, legend_items.items()):
+        col.markdown(
+            f'<div style="background:rgba({color[0]},{color[1]},{color[2]},0.9);'
+            f'padding:3px 6px;border-radius:3px;font-size:11px;text-align:center">{label}</div>',
+            unsafe_allow_html=True,
+        )
+    st.caption(f"{world['city_id']} — seed {world['seed']} — {width}x{height_dim} grid — drag to orbit, scroll to zoom")
+
+# ============================================================================
+# City Dashboard (SRS §30.5)
+# ============================================================================
 with tabs[1]:
     cols = st.columns(5)
     cols[0].metric("Tick", status["tick"])
@@ -139,16 +199,119 @@ with tabs[1]:
     cols2[2].metric("Policies active", len(status["policies"]) or "none")
     cols2[3].metric("Simulation ID", status["simulation_id"])
 
+    st.subheader("Trends over time")
+    series = pd.DataFrame(api_get("/simulation/metrics-timeseries"))
+    if len(series) > 1:
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.altair_chart(
+                alt.Chart(series)
+                .mark_line(color="#e05a5a", point=True)
+                .encode(
+                    x=alt.X("tick:Q", title="Day"),
+                    y=alt.Y("food_price_index:Q", title="Food price index"),
+                    tooltip=["tick", "food_price_index"],
+                )
+                .properties(height=220, title="Food price index over time"),
+                use_container_width=True,
+            )
+            st.altair_chart(
+                alt.Chart(series)
+                .mark_area(color="#5a9be0", opacity=0.5, line={"color": "#5a9be0"})
+                .encode(
+                    x=alt.X("tick:Q", title="Day"),
+                    y=alt.Y("population:Q", title="Population"),
+                    tooltip=["tick", "population"],
+                )
+                .properties(height=220, title="Population over time"),
+                use_container_width=True,
+            )
+        with chart_col2:
+            employment_df = series.melt(
+                id_vars=["tick"], value_vars=["employed", "active_businesses"], var_name="metric", value_name="value"
+            )
+            st.altair_chart(
+                alt.Chart(employment_df)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("tick:Q", title="Day"),
+                    y=alt.Y("value:Q", title="Count"),
+                    color=alt.Color("metric:N", title=None, scale=alt.Scale(range=["#6ee06e", "#e0c05a"])),
+                    tooltip=["tick", "metric", "value"],
+                )
+                .properties(height=220, title="Employment & active businesses"),
+                use_container_width=True,
+            )
+            volume = pd.DataFrame(api_get("/simulation/event-volume"))
+            if len(volume):
+                by_tick = volume.groupby("tick", as_index=False)["count"].sum()
+                st.altair_chart(
+                    alt.Chart(by_tick)
+                    .mark_bar(color="#9a7ae0")
+                    .encode(
+                        x=alt.X("tick:Q", title="Day"),
+                        y=alt.Y("count:Q", title="Events"),
+                        tooltip=["tick", "count"],
+                    )
+                    .properties(height=220, title="Event volume per day"),
+                    use_container_width=True,
+                )
+    else:
+        st.caption("Advance the simulation a few ticks to see trends.")
+
     st.json(status["policies"] or {"food_subsidy": 0, "tax_rate": 0.15, "interest_rate": 0.05})
 
-# -- Citizens (SRS §30.2) -------------------------------------------------
+# ============================================================================
+# Citizens (SRS §30.2)
+# ============================================================================
 with tabs[2]:
     citizens_df = pd.DataFrame(api_get("/citizens"))
     st.dataframe(
         citizens_df[["citizen_id", "name", "age", "occupation", "employer_id", "salary", "savings", "stress"]],
         use_container_width=True,
-        height=250,
+        height=220,
     )
+
+    st.subheader("Population statistics")
+    stat_col1, stat_col2, stat_col3 = st.columns(3)
+    with stat_col1:
+        st.altair_chart(
+            alt.Chart(citizens_df)
+            .mark_bar(color="#6ea8e0")
+            .encode(
+                x=alt.X("age:Q", bin=alt.Bin(maxbins=20), title="Age"),
+                y=alt.Y("count():Q", title="Citizens"),
+            )
+            .properties(height=200, title="Age distribution"),
+            use_container_width=True,
+        )
+    with stat_col2:
+        occ_counts = citizens_df["occupation"].value_counts().reset_index()
+        occ_counts.columns = ["occupation", "count"]
+        st.altair_chart(
+            alt.Chart(occ_counts)
+            .mark_bar(color="#e0a05a")
+            .encode(
+                x=alt.X("count:Q", title="Citizens"),
+                y=alt.Y("occupation:N", sort="-x", title=None),
+                tooltip=["occupation", "count"],
+            )
+            .properties(height=200, title="Occupation breakdown"),
+            use_container_width=True,
+        )
+    with stat_col3:
+        citizens_df["net_worth"] = citizens_df["savings"] - citizens_df["debt"]
+        st.altair_chart(
+            alt.Chart(citizens_df)
+            .mark_bar(color="#7ae09a")
+            .encode(
+                x=alt.X("net_worth:Q", bin=alt.Bin(maxbins=20), title="Net worth"),
+                y=alt.Y("count():Q", title="Citizens"),
+            )
+            .properties(height=200, title="Wealth distribution"),
+            use_container_width=True,
+        )
+
     name_by_id = {c["citizen_id"]: c["name"] for c in citizens_df.to_dict(orient="records")}
     selected_citizen = st.selectbox(
         "Inspect a citizen", list(name_by_id), format_func=lambda cid: f"{name_by_id[cid]} ({cid})"
@@ -164,7 +327,9 @@ with tabs[2]:
     st.markdown(f"**Timeline — {name_by_id.get(selected_citizen, selected_citizen)}**")
     st.dataframe(pd.DataFrame(api_get(f"/citizens/{selected_citizen}/timeline")), use_container_width=True, height=200)
 
-# -- Households (SRS §30.3) ----------------------------------------------
+# ============================================================================
+# Households (SRS §30.3)
+# ============================================================================
 with tabs[3]:
     households = {c["household_id"] for c in citizens_df.to_dict(orient="records") if c.get("household_id")}
     rows = []
@@ -180,18 +345,110 @@ with tabs[3]:
                 "avg_stress": round(members["stress"].mean(), 3),
             }
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, height=300)
+    households_df = pd.DataFrame(rows)
+    st.dataframe(households_df, use_container_width=True, height=250)
 
-# -- Businesses (SRS §30.4) -----------------------------------------------
+    hh_col1, hh_col2 = st.columns(2)
+    with hh_col1:
+        st.altair_chart(
+            alt.Chart(households_df)
+            .mark_circle(size=90, color="#e08a5a", opacity=0.75)
+            .encode(
+                x=alt.X("total_savings:Q", title="Total household savings"),
+                y=alt.Y("avg_stress:Q", title="Average financial stress"),
+                size=alt.Size("members:Q", title="Members"),
+                tooltip=["household_id", "members", "total_savings", "avg_stress"],
+            )
+            .properties(height=260, title="Savings vs. stress (bubble size = household size)"),
+            use_container_width=True,
+        )
+    with hh_col2:
+        st.altair_chart(
+            alt.Chart(households_df)
+            .mark_bar(color="#5ae0c0")
+            .encode(
+                x=alt.X("avg_stress:Q", bin=alt.Bin(maxbins=15), title="Average financial stress"),
+                y=alt.Y("count():Q", title="Households"),
+            )
+            .properties(height=260, title="Household stress distribution"),
+            use_container_width=True,
+        )
+
+# ============================================================================
+# Businesses (SRS §30.4)
+# ============================================================================
 with tabs[4]:
     businesses_df = pd.DataFrame(api_get("/businesses"))
-    st.dataframe(businesses_df, use_container_width=True, height=300)
+    st.dataframe(businesses_df, use_container_width=True, height=250)
     employer_ids = sorted(businesses_df["business_id"].tolist()) if len(businesses_df) else []
 
-# -- Events & Causality (SRS §30.6, §22-23) -------------------------------
+    if len(businesses_df):
+        biz_col1, biz_col2 = st.columns(2)
+        with biz_col1:
+            industry_counts = businesses_df["industry"].value_counts().reset_index()
+            industry_counts.columns = ["industry", "count"]
+            st.altair_chart(
+                alt.Chart(industry_counts)
+                .mark_arc(innerRadius=50)
+                .encode(
+                    theta=alt.Theta("count:Q"),
+                    color=alt.Color("industry:N", title="Industry"),
+                    tooltip=["industry", "count"],
+                )
+                .properties(height=260, title="Businesses by industry"),
+                use_container_width=True,
+            )
+        with biz_col2:
+            top_businesses = businesses_df.sort_values("cash", ascending=False)
+            st.altair_chart(
+                alt.Chart(top_businesses)
+                .mark_bar()
+                .encode(
+                    x=alt.X("cash:Q", title="Cash"),
+                    y=alt.Y("business_id:N", sort="-x", title=None),
+                    color=alt.Color("active:N", title="Active", scale=alt.Scale(range=["#e05a5a", "#5ae08a"])),
+                    tooltip=["business_id", "industry", "cash", "profit", "active"],
+                )
+                .properties(height=260, title="Cash on hand by business"),
+                use_container_width=True,
+            )
+
+# ============================================================================
+# Events & Causality (SRS §30.6, §22-23)
+# ============================================================================
 with tabs[5]:
-    events_df = pd.DataFrame(api_get("/events", limit=200))
-    st.dataframe(events_df, use_container_width=True, height=300)
+    events_df = pd.DataFrame(api_get("/events", limit=500))
+    if len(events_df):
+        ev_col1, ev_col2 = st.columns(2)
+        with ev_col1:
+            type_counts = events_df["event_type"].value_counts().reset_index()
+            type_counts.columns = ["event_type", "count"]
+            st.altair_chart(
+                alt.Chart(type_counts)
+                .mark_bar(color="#8a7ae0")
+                .encode(
+                    x=alt.X("count:Q", title="Count"),
+                    y=alt.Y("event_type:N", sort="-x", title=None),
+                    tooltip=["event_type", "count"],
+                )
+                .properties(height=280, title="Event type breakdown (last 500)"),
+                use_container_width=True,
+            )
+        with ev_col2:
+            by_tick = events_df.groupby("simulation_tick", as_index=False).size()
+            st.altair_chart(
+                alt.Chart(by_tick)
+                .mark_bar(color="#5ac0e0")
+                .encode(
+                    x=alt.X("simulation_tick:Q", title="Day"),
+                    y=alt.Y("size:Q", title="Events"),
+                    tooltip=["simulation_tick", "size"],
+                )
+                .properties(height=280, title="Event volume per day (last 500)"),
+                use_container_width=True,
+            )
+
+    st.dataframe(events_df, use_container_width=True, height=250)
 
     st.markdown("**Trace a causal chain**")
     event_id = st.text_input("event_id", value=events_df["event_id"].iloc[-1] if len(events_df) else "")
@@ -204,7 +461,9 @@ with tabs[5]:
             st.markdown("Effects (forward — butterfly effect)")
             st.dataframe(pd.DataFrame(api_get(f"/events/{event_id}/effects")), use_container_width=True)
 
-# -- AI Agents (SRS §30.7) -------------------------------------------------
+# ============================================================================
+# AI Agents (SRS §30.7)
+# ============================================================================
 with tabs[6]:
     hist_col, gov_col = st.columns(2)
     with hist_col:
@@ -240,7 +499,9 @@ with tabs[6]:
         else:
             st.caption("No businesses with current employees to select yet.")
 
-# -- Alternate Timelines (SRS §27-29) -------------------------------------
+# ============================================================================
+# Alternate Timelines (SRS §27-29)
+# ============================================================================
 with tabs[7]:
     st.markdown("**Branch the current simulation**")
     new_id = st.text_input("New simulation_id", value=f"{status['simulation_id']}_branch")
@@ -259,7 +520,36 @@ with tabs[7]:
         b = st.selectbox("Timeline B", sim_ids, index=min(1, len(sim_ids) - 1))
         if st.button("⚖ Compare"):
             comparison = api_get("/simulation/compare", simulation_a=a, simulation_b=b)
-            st.json(comparison)
+            metrics_a = comparison["simulation_a"]["metrics"]
+            metrics_b = comparison["simulation_b"]["metrics"]
+            compare_rows = []
+            for key in metrics_a:
+                if key == "tick":
+                    continue
+                compare_rows.append({"metric": key, "timeline": a, "value": metrics_a[key]})
+                compare_rows.append({"metric": key, "timeline": b, "value": metrics_b[key]})
+            compare_df = pd.DataFrame(compare_rows)
+            st.altair_chart(
+                alt.Chart(compare_df)
+                .mark_bar()
+                .encode(
+                    x=alt.X("timeline:N", title=None),
+                    y=alt.Y("value:Q"),
+                    color=alt.Color("timeline:N", scale=alt.Scale(range=["#5a9be0", "#e0a05a"])),
+                    column=alt.Column("metric:N", title=None),
+                    tooltip=["metric", "timeline", "value"],
+                )
+                .properties(height=240, width=120),
+                use_container_width=False,
+            )
+            st.markdown("**Divergent events**")
+            div_col1, div_col2 = st.columns(2)
+            with div_col1:
+                st.caption(a)
+                st.dataframe(pd.DataFrame(comparison["divergent_events"][a]), use_container_width=True, height=200)
+            with div_col2:
+                st.caption(b)
+                st.dataframe(pd.DataFrame(comparison["divergent_events"][b]), use_container_width=True, height=200)
     else:
         st.caption("Branch at least once to compare timelines.")
 

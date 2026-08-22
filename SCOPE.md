@@ -35,10 +35,15 @@ than a list of deliberate exclusions.
 - **Counterfactual branching, timeline comparison, butterfly-effect tracing** (§27-29): deep-copy
   branching, per-branch metrics, divergent-event lists, reusing the causal-chain endpoints for
   butterfly-effect tracing rather than a second mechanism.
-- **Dashboard** (§30-32): World View (a real rendered zone/building grid, not just tables), City
-  Dashboard, Citizens (+ memories + relationships + timeline), Households, Businesses, Events &
-  Causality (with a trace lookup), all four AI agents, Alternate Timelines (branch/compare/
-  activate) — all as thin calls to the FastAPI layer.
+- **Dashboard** (§30-32): World View is a real interactive 3D city render (pydeck/deck.gl —
+  colored zone tiles + extruded, color-coded buildings, drag-to-orbit/scroll-to-zoom), not a flat
+  table. Every other tab has real statistical charts (Altair) driving the data, not just raw
+  tables/JSON: City Dashboard has time-series trend lines (food price, population, employment,
+  event volume) reconstructed from the event log; Citizens has age/wealth histograms and an
+  occupation breakdown; Households has a savings-vs-stress bubble chart; Businesses has an
+  industry donut and a cash-on-hand bar chart; Events & Causality has event-type and volume
+  breakdowns plus the causal trace lookup; Alternate Timelines renders the A/B comparison as
+  grouped bars instead of a JSON dump. All as thin calls to the FastAPI layer.
 - **Observability & reproducibility** (§33, §35-36): `/observability/metrics` (ticks/sec, CPU/mem,
   active counts), `/simulation/reproducibility` (seed, config, versions, agent config).
 
