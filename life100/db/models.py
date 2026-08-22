@@ -103,3 +103,70 @@ class SimulationStateRow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class RelationshipRow(Base):
+    """SRS §17's named `relationships` table — the social graph
+    (simulation/social.py's `Relationship`), persisted so it's queryable
+    independent of the in-memory engine."""
+
+    __tablename__ = "relationships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    simulation_id: Mapped[str] = mapped_column(String, index=True)
+    citizen_id: Mapped[str] = mapped_column(String, index=True)
+    other_id: Mapped[str] = mapped_column(String, index=True)
+    relationship_type: Mapped[str] = mapped_column(String)
+    strength: Mapped[float] = mapped_column(Float)
+    trust: Mapped[float] = mapped_column(Float)
+    frequency: Mapped[float] = mapped_column(Float)
+
+
+class GovernmentRow(Base):
+    """SRS §17's named `government` table (simulation/government.py's
+    `Government` — the structured policy levers, one row per simulation)."""
+
+    __tablename__ = "government"
+
+    simulation_id: Mapped[str] = mapped_column(String, primary_key=True)
+    tax_rate: Mapped[float] = mapped_column(Float, default=0.15)
+    interest_rate: Mapped[float] = mapped_column(Float, default=0.05)
+    food_subsidy: Mapped[float] = mapped_column(Float, default=0.0)
+    healthcare_spending: Mapped[float] = mapped_column(Float, default=0.0)
+    education_spending: Mapped[float] = mapped_column(Float, default=0.0)
+    infrastructure_spending: Mapped[float] = mapped_column(Float, default=0.0)
+    business_regulation: Mapped[float] = mapped_column(Float, default=0.3)
+    environmental_regulation: Mapped[float] = mapped_column(Float, default=0.3)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InfrastructureRow(Base):
+    """SRS §17's named `infrastructure`/`locations` tables (world.py's
+    `Building` — homes/schools/hospitals/shops/factories/banks/government
+    buildings, with their (x, y) location)."""
+
+    __tablename__ = "infrastructure"
+
+    building_id: Mapped[str] = mapped_column(String, primary_key=True)
+    kind: Mapped[str] = mapped_column(String, index=True)
+    x: Mapped[int] = mapped_column(Integer)
+    y: Mapped[int] = mapped_column(Integer)
+    city_id: Mapped[str] = mapped_column(String, index=True)
+
+
+class AgentRow(Base):
+    """SRS §17's named `agents` table — a record of each AI agent's
+    configuration (SRS §35 reproducibility: agent configuration + model
+    version)."""
+
+    __tablename__ = "agents"
+
+    agent_name: Mapped[str] = mapped_column(String, primary_key=True)
+    model: Mapped[str] = mapped_column(String)
+    module_path: Mapped[str] = mapped_column(String)
+    last_active_tick: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

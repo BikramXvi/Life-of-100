@@ -63,8 +63,37 @@ apply) is identical regardless of provider; `agents/base.py` isolates the SDK ca
 | Postgres schema depth | 5 tables (citizens/households/businesses/events/simulation_state) vs. SRS §17's ~17-table wishlist | The event log (`events` table) is the real durable record; the rest are current-state projections. Splitting out dedicated `assets`/`debts`/`health_records`/etc. tables is schema work, not new capability. |
 | Alembic migrations, k8s, secret managers | Not needed to demonstrate the required capability | `db/session.py`'s `create_all` is the pragmatic floor; swap in Alembic when schema changes need to be versioned. |
 | World View as a literal 2D map render | Dashboard shows City/Citizen/Household/Business data as tables/metrics, not a rendered grid | `world.zones`/`world.buildings` already carry (x, y) coordinates; a Streamlit `st.pydeck_chart` or simple matplotlib grid would consume them directly. |
-| A failed business can't be resurrected | `take_loan` on an inactive business adds cash/debt but doesn't flip `active` back to `True` — found live-testing the Business Agent, which correctly proposed a loan for a failed business anyway | Add a "reopen" business action, or have `_apply_loan_created` reactivate a business with `active=False` when it receives enough capital. |
 | Full 1-tick-per-hour granularity | 1 tick = 1 simulated day (SRS §9 specifies hourly) | Would need a full daily-routine scheduler (wake/commute/work/lunch/shop/sleep as sub-tick phases) rather than one decision pass per day. |
+
+## Fixed since the last pass
+
+- **A failed business couldn't be resurrected** — `take_loan` on an inactive business added cash/debt
+  but never flipped `active` back to `True`. Fixed: a loan that brings cash positive now reopens
+  the business via a `BUSINESS_EXPANDED('reopened_after_loan')` event.
+- **The Kafka→Postgres consumer's incremental state updates never actually ran** — a significant
+  bug, found only by directly inspecting Postgres after live-testing (no unit test could have
+  caught it, since the test suite doesn't run against a real broker/DB). Two independent causes,
+  both fixed:
+  1. `insert_event`'s duplicate check used `result.rowcount`, but psycopg3 reports
+     `rowcount == -1` for `INSERT ... ON CONFLICT DO NOTHING` regardless of outcome — so every
+     event looked like a duplicate and `apply_event_to_state` silently never ran. Fixed with a
+     `RETURNING` clause, the reliable way to detect an actual insert.
+  2. The consumer subscribed to topics that had never been produced to yet (e.g. `families`,
+     since no household-level event had fired) — Redpanda left the whole consumer group unable
+     to reach a stable partition assignment, so messages on topics that *did* exist were never
+     processed either, with no error beyond a repeating `UNKNOWN_TOPIC_OR_PART` warning. Fixed by
+     having the worker explicitly pre-create every topic via `AdminClient.create_topics()` before
+     subscribing, rather than relying on implicit auto-create (which triggers on produce, not on
+     a consumer's subscribe).
+
+  Practical impact before the fix: `fact_events`/the event log itself was always correct (its
+  INSERTs succeeded regardless of the buggy return-value check) — but `citizens`/`businesses`/
+  `government`/`simulation_state` in Postgres never reflected anything past the initial bulk
+  load. Verified after the fix: a 20-tick drought run now shows Postgres's `citizens` table
+  correctly listing laid-off citizens as `unemployed`, and `simulation_state` exactly matching
+  the live engine (tick 20, food_price_index 2.91, 1650/1650 events) — the "Postgres reflects
+  current operational state" claim in `README.md`/`PROGRESS.md` is now actually true, not just
+  documented as true.
 
 ## Explicitly out of scope (matches SRS §45's own list, not a cut)
 

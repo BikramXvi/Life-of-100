@@ -26,6 +26,35 @@ logger = logging.getLogger("life100.streaming.consumer")
 TOPICS = sorted(set(TOPIC_BY_SOURCE_TYPE.values()) | {"system-events"})
 
 
+def _ensure_topics_exist(broker: str, topics: list[str], timeout: float = 15.0) -> None:
+    """Explicitly create every topic before subscribing.
+
+    Found via live testing: subscribing to a topic nothing has ever
+    published to (e.g. `families`, if no household-level event has fired
+    yet) leaves the whole consumer group stuck — it never reaches a stable
+    partition assignment, so messages on topics that DO exist never get
+    processed either, silently, with no error beyond a repeating
+    UNKNOWN_TOPIC_OR_PART warning. Broker-side `auto_create_topics_enabled`
+    doesn't reliably help here since it triggers on produce, not on a
+    consumer's subscribe/metadata request. Pre-creating every topic the
+    producer could ever use is the standard, robust fix.
+    """
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    admin = AdminClient({"bootstrap.servers": broker})
+    existing = set(admin.list_topics(timeout=timeout).topics.keys())
+    missing = [t for t in topics if t not in existing]
+    if not missing:
+        return
+    futures = admin.create_topics([NewTopic(t, num_partitions=1, replication_factor=1) for t in missing])
+    for topic, future in futures.items():
+        try:
+            future.result(timeout=timeout)
+            logger.info("created topic %s", topic)
+        except Exception as exc:  # noqa: BLE001 — another instance may have raced us to create it; that's fine
+            logger.info("topic %s not created (%s) — likely already exists", topic, exc)
+
+
 def run(broker: str | None = None, database_url: str | None = None, poll_timeout: float = 1.0) -> None:
     from confluent_kafka import Consumer  # deferred import — see events/producer.py
 
@@ -33,6 +62,8 @@ def run(broker: str | None = None, database_url: str | None = None, poll_timeout
     engine = make_engine(database_url)
     init_db(engine)
     session_factory = make_session_factory(engine)
+
+    _ensure_topics_exist(broker, TOPICS)
 
     consumer = Consumer(
         {
