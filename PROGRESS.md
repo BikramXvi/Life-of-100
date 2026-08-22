@@ -4,6 +4,35 @@ Newest entries at the top. Each entry: date, SRS stage/section, what was done, w
 
 ---
 
+## 2026-08-22 — Full stack complete and verified live (submission scope)
+
+**Done, on top of the entry below:**
+- Postgres models/CRUD + Kafka consumer worker (`db/`, `streaming/consumer.py`).
+- DuckDB warehouse pipeline (`warehouse/duckdb_pipeline.py`) — fact_events/dim_citizen/dim_date.
+- Government + Historian Gemini agents + validator (`agents/`), with mocked-LLM tests (never hit
+  the live API during `pytest`).
+- Full FastAPI app (`api/`) — simulation lifecycle, citizens, events/timeline, disasters, AI
+  agents, warehouse endpoints. 27/27 tests passing.
+- Dockerfiles (api/worker/dashboard) + `docker-compose.yml`, and a thin Streamlit dashboard.
+- **Two real calibration bugs found and fixed via live `docker compose` testing** (not caught by
+  unit tests, which used small populations/short runs): (1) default world grid produced ~5x too
+  many businesses for the population; (2) citizen salaries were charged as a full day's expense
+  every tick instead of a monthly figure divided down, making every business insolvent from
+  tick 1 regardless of the drought. See `WORKING_NOTES.md` for the full detail.
+- **Verified live, end-to-end, with a clean volume reset for reproducibility:** 5/5 containers
+  healthy; drought → 20 ticks → 22 real JOB_LOST + 5 BUSINESS_FAILED events; Government and
+  Historian agents both tested against the *real* Gemini API (not mocked) and behaved correctly
+  (grounded citation, validated policy proposal); DuckDB warehouse built from Postgres.
+- `README.md` written with the actual reproduced demo walkthrough (citizen `cit_0065`, Raj
+  Shrestha, losing his job at tick 12 — a real, deterministic result of this seed, not scripted).
+- Gemini model name corrected (`gemini-2.0-flash` → `gemini-3.6-flash`) after live API rejection.
+
+**Next:** final read-through of all docs for internal consistency before submission (due
+2026-08-24); optionally wire up real Snowflake if there's time left (credentials are in `.env`,
+warehouse/database/schema not yet provisioned — see `SCOPE.md`).
+
+---
+
 ## 2026-08-22 — Core simulation vertical slice (submission scope)
 
 **Context:** Building a 2-day vertical slice for a SIEP certificate submission (due 2026-08-24),
