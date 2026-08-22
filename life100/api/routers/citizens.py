@@ -44,6 +44,11 @@ def get_citizen(citizen_id: str, engine: SimulationEngine = Depends(get_engine))
     return {
         **_summary(citizen),
         "personality": vars(citizen.personality),
+        "goals": vars(citizen.goals) if citizen.goals else None,
+        "spouse_id": citizen.spouse_id,
+        "parent_ids": citizen.parent_ids,
+        "children_ids": citizen.children_ids,
+        "marital_status": citizen.marital_status,
         "household": (
             {"household_id": household.household_id, "member_ids": household.member_ids} if household else None
         ),
@@ -51,3 +56,22 @@ def get_citizen(citizen_id: str, engine: SimulationEngine = Depends(get_engine))
             {"business_id": business.business_id, "industry": business.industry} if business else None
         ),
     }
+
+
+@router.get("/{citizen_id}/relationships")
+def get_relationships(citizen_id: str, engine: SimulationEngine = Depends(get_engine)) -> list[dict]:
+    """SRS §12 — this citizen's social relationship graph edges."""
+    if citizen_id not in engine.citizens:
+        raise HTTPException(status_code=404, detail=f"citizen {citizen_id} not found")
+    edges = engine.relationships.get(citizen_id, [])
+    return [
+        {
+            "other_id": r.other_id,
+            "other_name": engine.citizens[r.other_id].name if r.other_id in engine.citizens else None,
+            "relationship_type": r.relationship_type,
+            "strength": r.strength,
+            "trust": r.trust,
+            "frequency": r.frequency,
+        }
+        for r in edges
+    ]

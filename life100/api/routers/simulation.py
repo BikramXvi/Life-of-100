@@ -16,11 +16,9 @@ from life100.api.state import state
 from life100.db import crud
 from life100.db.session import init_db, make_engine, make_session_factory
 from life100.events.producer import InMemoryEventProducer, KafkaEventProducer
-from life100.simulation.business import generate_businesses
 from life100.simulation.economy import run_tick
 from life100.simulation.engine import SimulationEngine
-from life100.simulation.households import generate_population
-from life100.simulation.world import WorldConfig, generate_world
+from life100.simulation.setup import bootstrap_simulation
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/simulation", tags=["simulation"])
@@ -49,13 +47,9 @@ def _make_producer():
 
 @router.post("/start")
 def start_simulation(payload: StartRequest) -> dict:
-    world = generate_world(WorldConfig(seed=payload.seed))
-    citizens, households = generate_population(payload.seed, n=payload.population)
-    businesses = generate_businesses(payload.seed, world, citizens)
-
     producer = _make_producer()
-    engine = SimulationEngine(
-        world, citizens, households, businesses, producer=producer, simulation_id=payload.simulation_id
+    engine = bootstrap_simulation(
+        payload.seed, population=payload.population, producer=producer, simulation_id=payload.simulation_id
     )
     state.engine = engine
 

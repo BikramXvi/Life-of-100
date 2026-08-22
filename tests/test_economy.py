@@ -1,19 +1,14 @@
 from life100.events.schemas import EventType
-from life100.simulation.business import generate_businesses
 from life100.simulation.disasters import trigger_drought
 from life100.simulation.economy import run_tick
 from life100.simulation.engine import SimulationEngine
-from life100.simulation.households import generate_population
-from life100.simulation.world import WorldConfig, generate_world
+from life100.simulation.setup import bootstrap_simulation
 
 SEED = 847291
 
 
 def _build_engine(n: int = 100) -> SimulationEngine:
-    world = generate_world(WorldConfig(seed=SEED))
-    citizens, households = generate_population(SEED, n=n)
-    businesses = generate_businesses(SEED, world, citizens)
-    return SimulationEngine(world, citizens, households, businesses)
+    return bootstrap_simulation(SEED, population=n)
 
 
 def test_drought_raises_food_price_immediately():
