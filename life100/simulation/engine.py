@@ -198,8 +198,22 @@ def _apply_loan_created(engine: SimulationEngine, event: Event) -> None:
         business = engine.businesses.get(event.source_entity)
         if business is None:
             return
+        was_inactive = not business.active
         business.cash = round(business.cash + amount, 2)
         business.debt = round(business.debt + amount, 2)
+        if was_inactive and business.cash > 0:
+            # A capital injection can bring a failed business back — found
+            # via live-testing the Business Agent, which correctly proposed
+            # a loan for an inactive business but nothing previously
+            # reactivated it (SCOPE.md). Reopening is itself an event, not
+            # a silent side effect of this one.
+            business.active = True
+            engine.emit(
+                EventType.BUSINESS_EXPANDED,
+                source_entity=business.business_id,
+                source_type="business",
+                payload={"amount": 0.0, "reason": "reopened_after_loan", "caused_by": event.event_id},
+            )
         return
     citizen = engine.citizens.get(event.source_entity)
     if citizen is None:

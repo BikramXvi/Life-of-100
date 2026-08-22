@@ -180,6 +180,25 @@ def test_household_agent_rejects_out_of_bounds_loan():
     assert any(e.event_type == EventType.AI_DECISION_REJECTED for e in engine.log.all())
 
 
+def test_loan_reactivates_a_failed_business():
+    engine = _build_engine()
+    target_business = next(iter(engine.businesses.values()))
+    target_business.active = False
+    target_business.cash = -500.0
+
+    mock_client = MagicMock()
+    mock_client.generate_structured.return_value = {
+        "action": "take_loan",
+        "amount": 2000,
+        "rationale": "Needs capital to reopen after insolvency.",
+    }
+    outcome = business.propose_and_apply_business_action(engine, target_business.business_id, client=mock_client)
+
+    assert outcome["approved"] is True
+    assert target_business.active is True
+    assert target_business.cash > 0
+
+
 def test_historian_rejects_fabricated_citations():
     engine = _build_engine()
     mock_client = MagicMock()
