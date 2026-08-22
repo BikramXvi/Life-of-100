@@ -218,6 +218,29 @@ impossible to miss." Concretely:
   dark theme was kept as-is; every change here is information hierarchy (status bar, hero cards,
   causal diagrams), not visual polish for its own sake.
 
+## Added since the last pass: typography/chart refinement (no emoji, no neon)
+
+Explicit follow-up direction after the UI redesign above: "stay understated, refine it — sharpen
+typography, spacing, borders, chart polish, no glow/gradients/neon, and no emojis." Concretely:
+
+- Every emoji in the dashboard (status bar icons, button glyphs, expander/heading icons) was
+  removed and replaced with plain uppercase text labels — the status bar now reads
+  `DAY · POP · FOOD · UNEMPLOYMENT · BUSINESSES · HEALTH INCIDENTS` instead of pictograms.
+- A single registered Altair theme (`life100_dark`) replaces the ad hoc `alt.themes.enable("dark")`
+  — monospace axis/legend/title fonts, muted gridlines, and one deliberate 6-color palette
+  (`LF100_RED/BLUE/VIOLET/GREEN/AMBER/TEAL`) reused as the default categorical scale everywhere,
+  replacing what had been a different hand-picked hex per chart across every tab.
+- A tipping-point "verdict" (Sensitivity Analysis) and the causal-chain boxes (World View, Events
+  & Causality) now use shared CSS classes with a colored left-border accent instead of an emoji
+  glyph — same "flag this as important" signal, delivered through color/typography instead of an
+  icon.
+- `st.metric` widgets (What If Lab's world cards, City Dashboard) get a light global CSS touch:
+  monospace tabular-number values, small-caps uppercase labels — a "data instrument" read without
+  changing Streamlit's own chrome or adding any new visual weight.
+- Deliberately did not touch: Streamlit's own tab/expander/dataframe styling, the World View 3D
+  building color palette (already deliberate/verified), or add any gradient/glow/border-radius
+  beyond what already existed.
+
 ## Explicitly out of scope (matches SRS §45's own list, not a cut)
 
 Multiple cities, inter-city trade, political elections, cultural evolution, reinforcement

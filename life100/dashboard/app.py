@@ -20,9 +20,54 @@ import streamlit as st
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
 
-# A shared dark theme so every chart matches the dashboard's own look
-# rather than Vega-Lite's default light background.
-alt.themes.enable("dark")
+LF100_MONO = "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace"
+# A restrained, deliberate palette reused everywhere (charts, status bar,
+# alert accents) instead of ad hoc per-chart hex codes -- one instrument,
+# one set of colors, no rainbow.
+LF100_RED = "#c2564f"      # negative / alert / inactive
+LF100_BLUE = "#6a8fb8"     # primary neutral data series
+LF100_GREEN = "#5a9c72"    # positive / calm / active
+LF100_AMBER = "#b8935a"    # secondary data series
+LF100_VIOLET = "#8478a8"   # tertiary data series
+LF100_TEAL = "#5aa8a0"     # quaternary data series
+
+
+def _life100_altair_theme() -> dict:
+    """One chart theme for the whole dashboard: dark background, muted
+    gridlines, monospace labels (matching the status bar / metric cards),
+    and the palette above as the default categorical scale -- so a chart
+    that doesn't set an explicit color still looks deliberate, not random."""
+    return {
+        "config": {
+            "background": "transparent",
+            "view": {"stroke": "transparent"},
+            "axis": {
+                "domainColor": "#3a3a40",
+                "gridColor": "#232328",
+                "tickColor": "#3a3a40",
+                "labelColor": "#9a9aa2",
+                "titleColor": "#d4d4d8",
+                "labelFont": LF100_MONO,
+                "titleFont": LF100_MONO,
+                "labelFontSize": 11,
+                "titleFontSize": 12,
+            },
+            "legend": {
+                "labelColor": "#9a9aa2",
+                "titleColor": "#d4d4d8",
+                "labelFont": LF100_MONO,
+                "labelFontSize": 11,
+            },
+            "title": {"color": "#e8e8ec", "fontSize": 13, "font": LF100_MONO},
+            "range": {
+                "category": [LF100_RED, LF100_BLUE, LF100_VIOLET, LF100_GREEN, LF100_AMBER, LF100_TEAL]
+            },
+        }
+    }
+
+
+alt.themes.register("life100_dark", _life100_altair_theme)
+alt.themes.enable("life100_dark")
 
 
 def api_get(path: str, **params) -> object:
@@ -50,21 +95,59 @@ def render_causal_chain(events_root_first: list[dict]) -> None:
             f"{k}={v}" for k, v in payload.items() if k not in _CAUSE_LINK_KEYS and not isinstance(v, (dict, list))
         )
         st.markdown(
-            f'<div style="border:1px solid #3a3a40;border-radius:6px;padding:8px 12px;'
-            f'margin:2px 0;background:#1a1a1e">'
-            f'<b>{label}</b><br>'
-            f'<span style="font-size:11px;color:#999">day {e.get("simulation_tick", "?")} · {detail[:140]}</span>'
-            f"</div>",
+            f'<div class="lf100-chain-box"><b>{label}</b>'
+            f'<div class="lf100-chain-detail">day {e.get("simulation_tick", "?")} · {detail[:140]}</div></div>',
             unsafe_allow_html=True,
         )
         if i < len(events_root_first) - 1:
-            st.markdown(
-                '<div style="text-align:center;color:#e0655a;font-size:18px;line-height:1.1">↓</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown('<div class="lf100-chain-arrow">↓</div>', unsafe_allow_html=True)
 
 
 st.set_page_config(page_title="LIFE/100", layout="wide")
+
+# One shared stylesheet for every custom element in this file (status bar,
+# causal-chain boxes) plus a light touch on Streamlit's own metric widgets
+# (monospace tabular numbers, small-caps labels) -- deliberately restrained:
+# no gradients, no glow, no color beyond the palette already used in charts.
+st.markdown(
+    f"""
+    <style>
+    [data-testid="stMetricValue"] {{
+        font-family: {LF100_MONO};
+        font-variant-numeric: tabular-nums;
+    }}
+    [data-testid="stMetricLabel"] {{
+        font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: #9a9aa2;
+    }}
+    .lf100-status-bar {{
+        font-family: {LF100_MONO};
+        display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 28px;
+        border-top: 1px solid #302f36; border-bottom: 1px solid #302f36;
+        padding: 10px 2px; margin: 2px 0 18px 0; font-size: 12.5px;
+    }}
+    .lf100-seg {{ white-space: nowrap; }}
+    .lf100-label {{ color: #8d8d96; text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; margin-right: 5px; }}
+    .lf100-value {{ color: #eaeaee; font-weight: 600; }}
+    .lf100-alert {{ color: {LF100_RED}; font-weight: 600; }}
+    .lf100-calm {{ color: {LF100_GREEN}; }}
+    .lf100-chain-box {{
+        border: 1px solid #302f36; border-left: 2px solid #6a6a74; border-radius: 3px;
+        padding: 9px 13px; margin: 2px 0; background: #17171b;
+    }}
+    .lf100-chain-box b {{ color: #eaeaee; font-size: 13px; }}
+    .lf100-chain-detail {{ font-family: {LF100_MONO}; font-size: 11px; color: #8d8d96; margin-top: 2px; }}
+    .lf100-chain-arrow {{ text-align: center; color: #6a6a74; font-size: 15px; line-height: 1.4; }}
+    .lf100-verdict {{
+        border: 1px solid #302f36; border-radius: 3px; padding: 10px 16px; margin: 6px 0 14px 0;
+        font-size: 14px; font-weight: 600;
+    }}
+    .lf100-verdict-alert {{ border-left: 3px solid {LF100_RED}; color: #eaeaee; }}
+    .lf100-verdict-calm {{ border-left: 3px solid {LF100_GREEN}; color: #b9b9c0; }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("LIFE/100")
 st.caption("Only 100 people. Every life matters.")
 st.caption("A civilization small enough to understand. Complex enough to surprise you.")
@@ -83,20 +166,20 @@ with st.sidebar:
     st.header("Simulation Control")
     seed = st.number_input("Seed", value=847291, step=1)
     population = st.number_input("Population", value=100, min_value=5, max_value=500, step=5)
-    if st.button("▶ Start / Restart Simulation", type="primary"):
+    if st.button("Start / Restart Simulation", type="primary"):
         resp = api_post("/simulation/start", {"seed": int(seed), "population": int(population)})
         st.success(resp.json()) if resp.ok else st.error(resp.text)
 
     st.divider()
     ticks = st.number_input("Ticks to advance", value=5, min_value=1, max_value=200)
-    if st.button("⏩ Advance Simulation"):
+    if st.button("Advance Simulation"):
         resp = api_post("/simulation/tick", {"ticks": int(ticks)})
         st.write(resp.json() if resp.ok else resp.text)
 
     st.divider()
     st.subheader("Trigger a Disaster")
     disaster_label = st.selectbox("Disaster", list(DISASTER_ENDPOINTS))
-    if st.button(f"⚠ Trigger {disaster_label}"):
+    if st.button(f"Trigger {disaster_label}"):
         resp = api_post(DISASTER_ENDPOINTS[disaster_label], {})
         st.write(resp.json() if resp.ok else resp.text)
 
@@ -116,29 +199,17 @@ def render_status_bar(status: dict) -> None:
     point: moving between Citizens / What If / Sensitivity should still
     feel like looking at the same living world, not nine disconnected
     pages (Level 1 of the UI's own hierarchy -- "what is happening?")."""
-    st.markdown(
-        """
-        <style>
-        .lf100-status-bar {
-            display: flex; flex-wrap: wrap; gap: 4px 20px; align-items: center;
-            border-top: 1px solid #333; border-bottom: 1px solid #333;
-            padding: 9px 2px; margin: 2px 0 16px 0; font-size: 13.5px; color: #cfcfd4;
-        }
-        .lf100-seg { white-space: nowrap; }
-        .lf100-seg b { color: #f0f0f2; }
-        .lf100-alert { color: #e0655a; font-weight: 600; }
-        .lf100-calm { color: #6ee08a; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+
+    def _seg(label: str, value: object) -> str:
+        return f'<span class="lf100-seg"><span class="lf100-label">{label}</span><span class="lf100-value">{value}</span></span>'
+
     segments = [
-        f'<span class="lf100-seg"><b>DAY {status["tick"]}</b></span>',
-        f'<span class="lf100-seg">👥 {status["population"]}</span>',
-        f'<span class="lf100-seg">💰 food {status["food_price_index"]:.2f}</span>',
-        f'<span class="lf100-seg">💼 unemployment {status.get("unemployment_rate", 0.0) * 100:.1f}%</span>',
-        f'<span class="lf100-seg">🏢 {status.get("active_businesses", "—")} businesses</span>',
-        f'<span class="lf100-seg">❤ {status.get("health_incidents", 0)} health incidents</span>',
+        _seg("Day", status["tick"]),
+        _seg("Pop", status["population"]),
+        _seg("Food", f'{status["food_price_index"]:.2f}'),
+        _seg("Unemployment", f'{status.get("unemployment_rate", 0.0) * 100:.1f}%'),
+        _seg("Businesses", status.get("active_businesses", "—")),
+        _seg("Health incidents", status.get("health_incidents", 0)),
     ]
     disasters = status.get("active_disasters_detail") or {}
     if disasters:
@@ -147,9 +218,9 @@ def render_status_bar(status: dict) -> None:
             mag = info.get("magnitude")
             mag_txt = f" (severity {mag:.2f})" if isinstance(mag, (int, float)) and mag else ""
             parts.append(f"{name.replace('_', ' ').upper()}{mag_txt}")
-        segments.append(f'<span class="lf100-seg lf100-alert">⚠ {" · ".join(parts)} ACTIVE</span>')
+        segments.append(f'<span class="lf100-seg lf100-alert">{" · ".join(parts)} ACTIVE</span>')
     else:
-        segments.append('<span class="lf100-seg lf100-calm">● no active disaster</span>')
+        segments.append('<span class="lf100-seg lf100-calm">no active disaster</span>')
     st.markdown(f'<div class="lf100-status-bar">{"".join(segments)}</div>', unsafe_allow_html=True)
 
 
@@ -413,7 +484,7 @@ with tabs[1]:
         with chart_col1:
             st.altair_chart(
                 alt.Chart(series)
-                .mark_line(color="#e05a5a", point=True)
+                .mark_line(color=LF100_RED, point=True)
                 .encode(
                     x=alt.X("tick:Q", title="Day"),
                     y=alt.Y("food_price_index:Q", title="Food price index"),
@@ -424,7 +495,7 @@ with tabs[1]:
             )
             st.altair_chart(
                 alt.Chart(series)
-                .mark_area(color="#5a9be0", opacity=0.5, line={"color": "#5a9be0"})
+                .mark_area(color=LF100_BLUE, opacity=0.5, line={"color": LF100_BLUE})
                 .encode(
                     x=alt.X("tick:Q", title="Day"),
                     y=alt.Y("population:Q", title="Population"),
@@ -443,7 +514,7 @@ with tabs[1]:
                 .encode(
                     x=alt.X("tick:Q", title="Day"),
                     y=alt.Y("value:Q", title="Count"),
-                    color=alt.Color("metric:N", title=None, scale=alt.Scale(range=["#6ee06e", "#e0c05a"])),
+                    color=alt.Color("metric:N", title=None, scale=alt.Scale(range=[LF100_GREEN, LF100_AMBER])),
                     tooltip=["tick", "metric", "value"],
                 )
                 .properties(height=220, title="Employment & active businesses"),
@@ -454,7 +525,7 @@ with tabs[1]:
                 by_tick = volume.groupby("tick", as_index=False)["count"].sum()
                 st.altair_chart(
                     alt.Chart(by_tick)
-                    .mark_bar(color="#9a7ae0")
+                    .mark_bar(color=LF100_VIOLET)
                     .encode(
                         x=alt.X("tick:Q", title="Day"),
                         y=alt.Y("count:Q", title="Events"),
@@ -487,7 +558,7 @@ with tabs[2]:
     )
 
     experiment = st.session_state.get("last_experiment")
-    with st.expander("⚙ Configure experiment", expanded=not experiment):
+    with st.expander("Configure experiment", expanded=not experiment):
         exp_col1, exp_col2 = st.columns(2)
         with exp_col1:
             st.markdown("**Scenario**")
@@ -510,7 +581,7 @@ with tabs[2]:
             st.markdown("**World C**")
             st.caption("Emergency employment program (a demand stimulus, not scripted mass-hiring)")
 
-        if st.button("▶ Run Experiment (3 parallel worlds)", type="primary"):
+        if st.button("Run Experiment (3 parallel worlds)", type="primary"):
             exp_request = {
                 "ticks": int(exp_ticks),
                 "scenarios": [
@@ -637,7 +708,7 @@ with tabs[3]:
     )
 
     sensitivity = st.session_state.get("last_sensitivity")
-    with st.expander("⚙ Configure sweep", expanded=not sensitivity):
+    with st.expander("Configure sweep", expanded=not sensitivity):
         sens_col1, sens_col2, sens_col3 = st.columns(3)
         with sens_col1:
             sens_min = st.slider("Minimum severity", 0.05, 0.45, 0.05, step=0.05, key="sens_min")
@@ -658,7 +729,7 @@ with tabs[3]:
             ),
         )
 
-        if st.button("🔬 Run Sensitivity Sweep", type="primary"):
+        if st.button("Run Sensitivity Sweep", type="primary"):
             if sens_max <= sens_min:
                 st.error("Maximum severity must be greater than minimum severity.")
             else:
@@ -680,11 +751,17 @@ with tabs[3]:
         st.caption(sensitivity["methodology"])
         if found:
             st.markdown(
-                f"##### ⚠ Tipping point found in **{', '.join(found)}** — "
-                f"{len(found)} of {len(sensitivity['tipping_points'])} swept metrics show a genuine break."
+                f'<div class="lf100-verdict lf100-verdict-alert">Tipping point found in '
+                f"{', '.join(found)} — {len(found)} of {len(sensitivity['tipping_points'])} "
+                f"swept metrics show a genuine break.</div>",
+                unsafe_allow_html=True,
             )
         else:
-            st.markdown("##### ● No tipping point found anywhere in this range — the response is smooth.")
+            st.markdown(
+                '<div class="lf100-verdict lf100-verdict-calm">No tipping point found anywhere in '
+                "this range — the response is smooth.</div>",
+                unsafe_allow_html=True,
+            )
 
         sens_df = pd.DataFrame(sensitivity["metrics_by_value"])
         sens_df.insert(0, "severity", sensitivity["values"])
@@ -708,7 +785,7 @@ with tabs[3]:
                     lo, hi = tp["bracket"]
                     band = (
                         alt.Chart(pd.DataFrame({"lo": [lo], "hi": [hi]}))
-                        .mark_rect(opacity=0.2, color="red")
+                        .mark_rect(opacity=0.2, color=LF100_RED)
                         .encode(x="lo:Q", x2="hi:Q")
                     )
                     st.altair_chart(band + line, use_container_width=True)
@@ -740,7 +817,7 @@ with tabs[4]:
     with stat_col1:
         st.altair_chart(
             alt.Chart(citizens_df)
-            .mark_bar(color="#6ea8e0")
+            .mark_bar(color=LF100_BLUE)
             .encode(
                 x=alt.X("age:Q", bin=alt.Bin(maxbins=20), title="Age"),
                 y=alt.Y("count():Q", title="Citizens"),
@@ -753,7 +830,7 @@ with tabs[4]:
         occ_counts.columns = ["occupation", "count"]
         st.altair_chart(
             alt.Chart(occ_counts)
-            .mark_bar(color="#e0a05a")
+            .mark_bar(color=LF100_AMBER)
             .encode(
                 x=alt.X("count:Q", title="Citizens"),
                 y=alt.Y("occupation:N", sort="-x", title=None),
@@ -766,7 +843,7 @@ with tabs[4]:
         citizens_df["net_worth"] = citizens_df["savings"] - citizens_df["debt"]
         st.altair_chart(
             alt.Chart(citizens_df)
-            .mark_bar(color="#7ae09a")
+            .mark_bar(color=LF100_GREEN)
             .encode(
                 x=alt.X("net_worth:Q", bin=alt.Bin(maxbins=20), title="Net worth"),
                 y=alt.Y("count():Q", title="Citizens"),
@@ -809,7 +886,7 @@ with tabs[5]:
     with hh_col1:
         st.altair_chart(
             alt.Chart(households_df)
-            .mark_circle(size=90, color="#e08a5a", opacity=0.75)
+            .mark_circle(size=90, color=LF100_AMBER, opacity=0.75)
             .encode(
                 x=alt.X("savings:Q", title="Household savings"),
                 y=alt.Y("financial_stress:Q", title="Financial stress"),
@@ -822,7 +899,7 @@ with tabs[5]:
     with hh_col2:
         st.altair_chart(
             alt.Chart(households_df)
-            .mark_bar(color="#5ae0c0")
+            .mark_bar(color=LF100_TEAL)
             .encode(
                 x=alt.X("financial_stress:Q", bin=alt.Bin(maxbins=15), title="Financial stress"),
                 y=alt.Y("count():Q", title="Households"),
@@ -863,7 +940,7 @@ with tabs[6]:
                 .encode(
                     x=alt.X("cash:Q", title="Cash"),
                     y=alt.Y("business_id:N", sort="-x", title=None),
-                    color=alt.Color("active:N", title="Active", scale=alt.Scale(range=["#e05a5a", "#5ae08a"])),
+                    color=alt.Color("active:N", title="Active", scale=alt.Scale(range=[LF100_RED, LF100_GREEN])),
                     tooltip=["business_id", "industry", "cash", "profit", "active"],
                 )
                 .properties(height=260, title="Cash on hand by business"),
@@ -882,7 +959,7 @@ with tabs[7]:
             type_counts.columns = ["event_type", "count"]
             st.altair_chart(
                 alt.Chart(type_counts)
-                .mark_bar(color="#8a7ae0")
+                .mark_bar(color=LF100_VIOLET)
                 .encode(
                     x=alt.X("count:Q", title="Count"),
                     y=alt.Y("event_type:N", sort="-x", title=None),
@@ -895,7 +972,7 @@ with tabs[7]:
             by_tick = events_df.groupby("simulation_tick", as_index=False).size()
             st.altair_chart(
                 alt.Chart(by_tick)
-                .mark_bar(color="#5ac0e0")
+                .mark_bar(color=LF100_BLUE)
                 .encode(
                     x=alt.X("simulation_tick:Q", title="Day"),
                     y=alt.Y("size:Q", title="Events"),
@@ -953,10 +1030,10 @@ with tabs[8]:
     )
     st.markdown(
         f'<div class="lf100-status-bar" style="margin-top:0">'
-        f'<span class="lf100-seg"><b>Day {status["tick"]}</b></span>'
-        f'<span class="lf100-seg">💰 food {status["food_price_index"]:.2f}</span>'
-        f'<span class="lf100-seg">💼 unemployment {status.get("unemployment_rate", 0.0) * 100:.1f}%</span>'
-        f'<span class="lf100-seg">🏢 {status.get("active_businesses", "—")} businesses</span>'
+        f'<span class="lf100-seg"><span class="lf100-label">Day</span><span class="lf100-value">{status["tick"]}</span></span>'
+        f'<span class="lf100-seg"><span class="lf100-label">Food</span><span class="lf100-value">{status["food_price_index"]:.2f}</span></span>'
+        f'<span class="lf100-seg"><span class="lf100-label">Unemployment</span><span class="lf100-value">{status.get("unemployment_rate", 0.0) * 100:.1f}%</span></span>'
+        f'<span class="lf100-seg"><span class="lf100-label">Businesses</span><span class="lf100-value">{status.get("active_businesses", "—")}</span></span>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -968,13 +1045,13 @@ with tabs[8]:
             "Citizen", list(name_by_id), format_func=lambda cid: name_by_id[cid], key="hist_citizen"
         )
         question = st.text_input("Question", value="Why did this citizen's situation change?")
-        if st.button("🕵 Ask Historian"):
+        if st.button("Ask Historian"):
             resp = api_post("/ai/historian/ask", {"citizen_id": h_citizen, "question": question})
             st.write(resp.json() if resp.ok else resp.text)
 
         st.markdown("**Household Decision Agent** — proposes, never decides unilaterally")
         decision_context = st.text_input("Decision context", value="considering a major loan")
-        if st.button("🏠 Ask Household Agent"):
+        if st.button("Ask Household Agent"):
             resp = api_post(
                 "/ai/household/propose", {"citizen_id": h_citizen, "decision_context": decision_context}
             )
@@ -982,15 +1059,15 @@ with tabs[8]:
 
     with gov_col:
         st.markdown(f"**Government Agent** — sees: food price {status['food_price_index']:.2f}, active disasters {', '.join(status['active_disasters']) or 'none'}")
-        if st.button("🏛 Propose Policy"):
+        if st.button("Propose Policy"):
             resp = api_post("/ai/government/propose")
             st.write(resp.json() if resp.ok else resp.text)
-            st.caption("→ validator checks it against ALLOWED_POLICY_ACTIONS bounds before anything applies")
+            st.caption("validator checks it against ALLOWED_POLICY_ACTIONS bounds before anything applies")
 
         st.markdown("**Business Agent** — proposes hire/fire/loan actions, bounded by validator.py")
         if employer_ids:
             b_id = st.selectbox("Business", employer_ids)
-            if st.button("🏢 Propose Business Action"):
+            if st.button("Propose Business Action"):
                 resp = api_post(f"/ai/business/{b_id}/propose")
                 st.write(resp.json() if resp.ok else resp.text)
         else:
@@ -1002,7 +1079,7 @@ with tabs[8]:
 with tabs[9]:
     st.markdown("**Branch the current simulation**")
     new_id = st.text_input("New simulation_id", value=f"{status['simulation_id']}_branch")
-    if st.button("🌿 Branch"):
+    if st.button("Branch"):
         resp = api_post("/simulation/branch", {"new_simulation_id": new_id})
         st.write(resp.json() if resp.ok else resp.text)
 
@@ -1015,7 +1092,7 @@ with tabs[9]:
         st.markdown("**Compare two timelines**")
         a = st.selectbox("Timeline A", sim_ids, index=0)
         b = st.selectbox("Timeline B", sim_ids, index=min(1, len(sim_ids) - 1))
-        if st.button("⚖ Compare"):
+        if st.button("Compare"):
             comparison = api_get("/simulation/compare", simulation_a=a, simulation_b=b)
             metrics_a = comparison["simulation_a"]["metrics"]
             metrics_b = comparison["simulation_b"]["metrics"]
@@ -1032,7 +1109,7 @@ with tabs[9]:
                 .encode(
                     x=alt.X("timeline:N", title=None),
                     y=alt.Y("value:Q"),
-                    color=alt.Color("timeline:N", scale=alt.Scale(range=["#5a9be0", "#e0a05a"])),
+                    color=alt.Color("timeline:N", scale=alt.Scale(range=[LF100_BLUE, LF100_AMBER])),
                     column=alt.Column("metric:N", title=None),
                     tooltip=["metric", "timeline", "value"],
                 )

@@ -254,3 +254,31 @@ communicated ("if a judge sees these screens first, they won't immediately perce
   headline verdict correctly reported a genuinely different tipping point
   (`unemployment_rate`, severity 0.292–0.300) on a different branch state than the earlier
   business_failures finding — reinforcing it's a live computation, not a cached result.
+
+## 2026-08-22 (same day, later still) — typography/chart refinement: no emoji, no neon
+
+Explicit follow-up after the redesign above: user was asked to choose between a bold "sci-fi HUD"
+direction and staying understated; chose the latter explicitly, plus "no emojis."
+
+- Removed every emoji from the dashboard (status bar, buttons, expanders, headings) — replaced
+  with plain uppercase text labels (e.g. `DAY`/`POP`/`FOOD`/`UNEMPLOYMENT` instead of pictograms).
+- Registered one shared Altair theme (`life100_dark`): monospace axis/legend/title fonts, muted
+  gridlines, and a single deliberate 6-color palette (`LF100_RED/BLUE/VIOLET/GREEN/AMBER/TEAL`)
+  now reused as the default categorical scale across every chart in every tab, replacing what had
+  been a different ad hoc hex color hand-picked per chart.
+- Sensitivity Analysis's tipping-point verdict and the causal-chain boxes (World View, Events &
+  Causality) now use a colored left-border accent (CSS class) instead of a warning/arrow emoji —
+  same "this matters" signal via color/typography, not an icon.
+- Global light-touch CSS on `st.metric` widgets: monospace tabular-number values, small-caps
+  uppercase labels, applied once, affecting What If Lab's hero cards and City Dashboard.
+- Found and fixed a real bug during this pass: an f-string CSS block had one un-escaped brace
+  pair (`.lf100-seg { white-space: nowrap; }` inside an f-string) which `ast.parse`/`py_compile`
+  did NOT catch (it's syntactically valid Python — `white - space` parses as subtraction of two
+  undefined names) but would have raised `NameError` at runtime the first time the page rendered.
+  Caught by manually executing the exact snippet in isolation before deploying, not just
+  syntax-checking — a reminder that f-string brace bugs can pass static checks and still crash at
+  runtime.
+- **84 passed, 2 skipped** (`uv run pytest -q`) — no test changes needed, this was UI-only.
+- Verified live end to end: status bar renders correctly with all 6 segments and no emoji; What
+  If Lab's hero cards show monospace values + the new muted palette in the comparison chart;
+  Sensitivity Analysis's verdict renders as a clean bordered box, not an emoji heading.
