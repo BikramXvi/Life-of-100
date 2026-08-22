@@ -50,6 +50,13 @@ the user's own Snowflake account. `POST /warehouse/build` (DuckDB) remains the d
 path since it needs no external account and is what the automated test suite can exercise
 locally; Snowflake is the opt-in real-infrastructure path alongside it.
 
+### Alembic migrations
+`migrations/` (env.py wired to `DATABASE_URL` and `db/models.py`'s metadata) with a real initial
+migration (`949daf9b6ae7_initial_schema.py`) generated against — and applied to — the live
+Postgres, verified via `alembic upgrade head` inside the running API container.
+`db/session.py`'s `create_all` is left in place too (idempotent, zero-friction for fresh local
+dev) — going forward, a model change should get a matching `alembic revision --autogenerate`.
+
 ### AI provider: Gemini Flash, not Anthropic/Claude
 The original `SRS.md`/`ROADMAP.md` specified the Anthropic API. Switched to Google Gemini
 (`gemini-3.6-flash`) because that's the key the user had — see `CLAUDE.md`'s tech-stack section
@@ -61,7 +68,7 @@ apply) is identical regardless of provider; `agents/base.py` isolates the SDK ca
 | Gap | Why | What it would take |
 |---|---|---|
 | Postgres schema depth | 5 tables (citizens/households/businesses/events/simulation_state) vs. SRS §17's ~17-table wishlist | The event log (`events` table) is the real durable record; the rest are current-state projections. Splitting out dedicated `assets`/`debts`/`health_records`/etc. tables is schema work, not new capability. |
-| Alembic migrations, k8s, secret managers | Not needed to demonstrate the required capability | `db/session.py`'s `create_all` is the pragmatic floor; swap in Alembic when schema changes need to be versioned. |
+| k8s, secret managers | Not needed to demonstrate the required capability | Docker Compose + `.env` is the pragmatic floor for this project's scale. |
 | World View as a literal 2D map render | Dashboard shows City/Citizen/Household/Business data as tables/metrics, not a rendered grid | `world.zones`/`world.buildings` already carry (x, y) coordinates; a Streamlit `st.pydeck_chart` or simple matplotlib grid would consume them directly. |
 | Full 1-tick-per-hour granularity | 1 tick = 1 simulated day (SRS §9 specifies hourly) | Would need a full daily-routine scheduler (wake/commute/work/lunch/shop/sleep as sub-tick phases) rather than one decision pass per day. |
 

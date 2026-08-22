@@ -14,7 +14,7 @@ for the detailed list and `SCOPE.md` for what's still simplified.
 
 **Remaining, in priority order (from SCOPE.md's gap table):**
 - [ ] Expand Postgres schema toward SRS §17's full table list (currently 5 tables + the event log)
-- [ ] Alembic migrations
+- [x] Alembic migrations — `migrations/` with a real initial-schema migration, applied live
 - [ ] World View as an actual rendered 2D map (coordinates already exist on `world.zones`/`buildings`)
 - [ ] Business resurrection after failure (a loan currently doesn't reactivate `active=False`)
 - [ ] Hourly (not daily) tick granularity, if full sub-day routines are ever wanted

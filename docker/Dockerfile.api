@@ -8,6 +8,8 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
 
 COPY life100 ./life100
+COPY alembic.ini ./alembic.ini
+COPY migrations ./migrations
 
 ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8000

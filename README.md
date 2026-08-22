@@ -81,6 +81,15 @@ docker compose up --build
 This starts Postgres (`:5432`), Redpanda (`:19092`), the API (`:8000`), the consumer worker, and
 the Streamlit dashboard (`:8501`). Swagger docs: http://localhost:8000/docs
 
+The API container also applies Postgres schema migrations on top of the zero-friction
+`create_all` bootstrap:
+
+```bash
+docker exec <api-container> alembic upgrade head
+```
+
+Model changes going forward should get a matching migration: `alembic revision --autogenerate -m "..."`.
+
 ## Demo walkthrough (the original, still-reproducible drought scenario)
 
 This reproduces deterministically from `seed=847291` (the SRS's own example seed).
