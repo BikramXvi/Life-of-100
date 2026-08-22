@@ -3,32 +3,43 @@
 **LIFE/100** — a depth-first, ~100-citizen digital society simulation. *Only 100 people. Every
 life matters.*
 
-This build is a 2-day vertical slice for a SIEP certificate submission covering **"Production AI
-Engineering with FastAPI & Docker"** and **"Modern Data Engineering & AI Infrastructure."** The
-full 30-milestone vision lives in `SRS.md`/`ROADMAP.md`; exactly what was built vs. deliberately
-cut for this submission (and why) is documented in **`SCOPE.md`** — read that first if you're
-evaluating this against the full spec.
+This started as a 2-day vertical slice for a SIEP certificate submission covering **"Production
+AI Engineering with FastAPI & Docker"** and **"Modern Data Engineering & AI Infrastructure,"**
+then grew into a full pass at the original `SRS.md`/`ROADMAP.md` vision (all four AI agents, the
+full disaster system, alternate-history branching, real Snowflake, and more). **`SCOPE.md`** is
+the up-to-date, honest gap analysis — read that first if you're evaluating this against the full
+spec; it tracks what's still simplified rather than pretending everything is 1:1 with the SRS.
 
 ## What it demonstrates
 
-- **FastAPI** — the primary interface (`/docs` for interactive Swagger/OpenAPI).
+- **FastAPI** — the primary interface, ~30 endpoints across simulation control, citizens,
+  businesses, events/causality, disasters, all four AI agents, alternate timelines, and
+  observability (`/docs` for interactive Swagger/OpenAPI).
 - **Docker** — `docker-compose.yml` orchestrates Postgres, Redpanda (Kafka-API-compatible),
   the API, a Kafka-consumer worker, and a Streamlit dashboard.
 - **A modern data engineering pipeline** — simulation → immutable events → Redpanda → consumer
-  worker → Postgres (operational state) → DuckDB (analytical warehouse, star schema).
-- **Governed AI infrastructure** — a Government Agent and a Historian Agent, both backed by
-  Google Gemini (Flash), that can only ever *propose*; a validator is the sole path from a
-  proposal to an actual state change (SRS §21's safety boundary).
-- **The core narrative**: a citizen, a drought, a genuinely emergent economic cascade, and an AI
-  agent explaining why — grounded in real events, not scripted.
+  worker → Postgres (operational state) → **both** DuckDB (default analytical warehouse) **and
+  real Snowflake** (opt-in, using the user's own account — verified live, see `SCOPE.md`).
+- **Governed AI infrastructure** — all four SRS-specified agents (Government, Historian,
+  Business, Household Decision), every one backed by Google Gemini and every one constrained to
+  *propose* — a validator is the only path from a proposal to an actual state change (SRS §21).
+- **A full, emergent digital society** — deterministic daily decisions (purchases, school,
+  job search, healthcare, loans, socializing), life events (birth/death/marriage/divorce), a
+  social relationship graph, and seven disaster types, all producing real events rather than
+  scripted outcomes.
+- **Explainability** — every downstream effect that has a real known cause cites it
+  (`caused_by`), so causal chains and butterfly-effect tracing are queries over real evidence,
+  never inferred or fabricated.
+- **Counterfactual experimentation** — branch a running simulation, apply a different
+  intervention to each branch, and compare real, non-scripted divergence.
 
 ## Architecture
 
 ```text
-Simulation Engine (world/citizens/households/businesses)
+Simulation Engine (world/citizens/households/businesses/government/resources/relationships)
         |
         v
-   Event (immutable, SRS §14 schema)
+   Event (immutable, SRS §14 schema)  <-- decisions.py, life_events.py, disasters.py, agents/*
         |
         +--> EventLog (in-process, source of truth for the running API)
         |
@@ -36,15 +47,18 @@ Simulation Engine (world/citizens/households/businesses)
    Redpanda (Kafka-API-compatible)
         |
         v
-   Consumer worker --> Postgres (operational state: citizens/households/businesses/events)
+   Consumer worker --> Postgres (operational state)
                               |
                               v
-                        DuckDB (fact_events / dim_citizen / dim_date — Snowflake stand-in)
+                  DuckDB (default)  /  real Snowflake (opt-in, user's own account)
 
 FastAPI  <---calls--->  Streamlit dashboard (visual layer only, never the engine)
    |
    v
-Government Agent / Historian Agent (Gemini) --> Validator --> Engine --> Event
+Government / Historian / Business / Household Agent (Gemini) --> Validator --> Engine --> Event
+   |
+   v
+simulation/alternate_history.py: branch -> independent engine -> compare -> divergent events
 ```
 
 ## Setup
@@ -54,95 +68,92 @@ Government Agent / Historian Agent (Gemini) --> Validator --> Engine --> Event
 ```bash
 uv sync
 cp .env.example .env   # fill in GEMINI_API_KEY at minimum
-uv run pytest          # 27 tests, no external infra required — all Gemini calls are mocked
+uv run pytest          # 62 tests, no external infra required — all Gemini calls are mocked
 ```
 
 **Full stack (Docker):**
 
 ```bash
-cp .env.example .env   # fill in GEMINI_API_KEY
+cp .env.example .env   # fill in GEMINI_API_KEY (and SNOWFLAKE_* if you want the real path)
 docker compose up --build
 ```
 
 This starts Postgres (`:5432`), Redpanda (`:19092`), the API (`:8000`), the consumer worker, and
 the Streamlit dashboard (`:8501`). Swagger docs: http://localhost:8000/docs
 
-## Demo walkthrough
+## Demo walkthrough (the original, still-reproducible drought scenario)
 
-This reproduces deterministically from `seed=847291` (the SRS's own example seed) — every run
-with the same seed and code produces the same citizens, businesses, and cascade.
+This reproduces deterministically from `seed=847291` (the SRS's own example seed).
 
-**1. Start the simulation and meet the society:**
+**1. Start the simulation:**
 
 ```bash
 curl -X POST localhost:8000/simulation/start -H "Content-Type: application/json" \
   -d '{"seed": 847291, "population": 100}'
-# -> 100 citizens, 38 households, 37 businesses, bootstrapped into Postgres
 ```
 
-**2. Trigger a drought:**
+**2. Trigger a drought, then advance the simulation and watch the cascade emerge — not scripted:**
 
 ```bash
 curl -X POST localhost:8000/disasters/drought -H "Content-Type: application/json" \
   -d '{"duration_ticks": 20}'
-# -> food_price_index immediately jumps from 1.0 to 1.4
-```
-
-**3. Advance the simulation and watch the cascade emerge — not scripted:**
-
-```bash
 curl -X POST localhost:8000/simulation/tick -H "Content-Type: application/json" -d '{"ticks": 20}'
-# -> food_price_index climbs to ~2.9 while the drought is active, then begins decaying
-#    after it ends; 22 JOB_LOST + 5 BUSINESS_FAILED events emerge across the run,
-#    concentrated in food-sector businesses whose costs rose directly with the food
-#    price index (biz_010, biz_011, biz_012, biz_013, ...).
+# -> food_price_index climbs while the drought is active, layoffs and business failures emerge
+#    from the tick loop recomputing every business's finances daily — not an
+#    `if drought: raj.lose_job()` (see life100/simulation/economy.py).
 ```
 
-**4. Meet Raj Shrestha (`cit_0065`)** — a 57-year-old `food_production` worker who is one of the
-citizens this run actually affects:
-
-```bash
-curl localhost:8000/citizens/cit_0065
-curl localhost:8000/citizens/cit_0065/timeline
-# -> a real JOB_LOST event at tick 12, payload: {"business_id": "biz_012",
-#    "reason": "business_cost_pressure"} — this is the emergent result of the tick loop
-#    recomputing his employer's finances every day, not an `if drought: raj.lose_job()`.
-```
-
-**5. Ask the Historian Agent why** (grounded in the real event above, not invented):
+**3. Ask the Historian Agent why a specific citizen's situation changed** (it can only cite real
+events it was actually given — see `agents/historian.py`'s `GroundingError` check):
 
 ```bash
 curl -X POST localhost:8000/ai/historian/ask -H "Content-Type: application/json" \
   -d '{"citizen_id": "cit_0065", "question": "Why did this citizen lose their job?"}'
-# -> {"answer": "...", "cited_event_ids": ["evt_sim_001_00012_0013"], ...}
-# The Historian is only allowed to cite event_ids that were actually handed to it as
-# evidence — see agents/historian.py's GroundingError check.
 ```
 
-**6. Ask the Government Agent to respond:**
+**4. Trace the causal chain directly** (only ever real, recorded links — never inferred):
+
+```bash
+curl localhost:8000/events/<event_id>/causes    # what led to this event
+curl localhost:8000/events/<event_id>/effects   # what it led to (butterfly effect)
+```
+
+**5. Ask the Government Agent to respond, and the Business/Household agents for their own
+domains:**
 
 ```bash
 curl -X POST localhost:8000/ai/government/propose
-# -> Government Agent reads the live economic snapshot (food price index, average
-#    household stress, unemployment), proposes a policy (e.g. a food subsidy) with a
-#    numeric value and rationale, the validator checks it's within allowed bounds
-#    before anything happens, and only then is it applied as a real POLICY_CHANGED
-#    event. Reject a proposal by editing agents/validator.py's ALLOWED_POLICY_ACTIONS
-#    bounds and re-running to see the AI_DECISION_REJECTED path instead.
+curl -X POST localhost:8000/ai/business/<business_id>/propose
+curl -X POST localhost:8000/ai/household/propose -H "Content-Type: application/json" \
+  -d '{"citizen_id": "cit_0065", "decision_context": "considering options after a job loss"}'
 ```
 
-**7. Build the analytical warehouse and query it:**
+**6. Branch into two timelines and compare them:**
 
 ```bash
-curl -X POST localhost:8000/warehouse/build
-curl localhost:8000/warehouse/summary
-# -> event counts by type, computed from DuckDB's fact_events table (built from
-#    Postgres) — the Snowflake stand-in described in SCOPE.md.
+curl -X POST localhost:8000/simulation/branch -d '{"new_simulation_id": "timeline_a"}'
+curl -X POST localhost:8000/simulation/branch -d '{"new_simulation_id": "timeline_b"}'
+curl -X POST localhost:8000/simulation/activate/timeline_a
+curl -X POST localhost:8000/ai/government/propose   # e.g. a food subsidy, only on timeline_a
+curl -X POST localhost:8000/simulation/tick -d '{"ticks": 15}'
+curl -X POST localhost:8000/simulation/activate/timeline_b
+curl -X POST localhost:8000/simulation/tick -d '{"ticks": 15}'
+curl "localhost:8000/simulation/compare?simulation_a=timeline_a&simulation_b=timeline_b"
+# -> per-branch metrics + the events unique to each timeline (the divergence)
 ```
 
-**8. Or just use the dashboard** at http://localhost:8501 — the same flow with a UI:
-simulation controls in the sidebar, a citizen table, an Ask-the-Historian panel, a
-Propose-Policy button, and a live event feed.
+**7. Try the other six disasters:** `/disasters/{food-shortage,flood,earthquake,
+disease-outbreak,economic-recession,energy-crisis}`.
+
+**8. Build the analytical warehouse:**
+
+```bash
+curl -X POST localhost:8000/warehouse/build            # DuckDB (default)
+curl -X POST localhost:8000/warehouse/build-snowflake   # real Snowflake, if SNOWFLAKE_* is set
+```
+
+**9. Or just use the dashboard** at http://localhost:8501 — 7 tabs covering City Dashboard,
+Citizens, Households, Businesses, Events & Causality, AI Agents, and Alternate Timelines.
 
 ## Tests
 
@@ -150,17 +161,17 @@ Propose-Policy button, and a live event feed.
 uv run pytest -q
 ```
 
-27 tests, no external infra required: world/population determinism, the drought→cascade
-mechanism, event schema/log behavior, the AI validator's accept/reject bounds, and full
-FastAPI end-to-end flows. All Gemini calls in the test suite are mocked (`unittest.mock`) — no
-live API traffic runs during `pytest`, protecting the free-tier quota; the walkthrough above is
-how to exercise the real Gemini calls.
+62 tests, no external infra required: world/population/relationship determinism, the
+drought→cascade mechanism, all seven disasters, the decision engine, life events, all four
+agents' validator accept/reject bounds, causal-chain tracing, alternate-history branching, and
+full FastAPI end-to-end flows. All Gemini calls in the test suite are mocked (`unittest.mock`) —
+no live API traffic runs during `pytest`; the walkthrough above is how to exercise the real calls.
 
 ## Project documents
 
 - `SRS.md` — the full original specification (all 46 sections).
-- `ROADMAP.md` — the full 30-milestone plan this submission is a slice of.
-- `SCOPE.md` — **what this submission cut from that plan, and why.**
+- `ROADMAP.md` — the full 30-milestone plan.
+- `SCOPE.md` — **the current, honest gap analysis against the full spec.**
 - `CLAUDE.md` — standing development rules (event-sourcing discipline, AI safety boundary,
   determinism, session workflow).
 - `PROGRESS.md` / `WORKING_NOTES.md` — build log and task-level decisions made along the way.
