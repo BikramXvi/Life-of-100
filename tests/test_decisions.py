@@ -1,5 +1,5 @@
 from life100.events.schemas import EventType
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.setup import bootstrap_simulation
 
 SEED = 847291
@@ -7,8 +7,7 @@ SEED = 847291
 
 def _run(n=60, ticks=30):
     engine = bootstrap_simulation(SEED, population=n)
-    for _ in range(ticks):
-        run_tick(engine)
+    run_days(engine, ticks)
     return engine
 
 
@@ -40,8 +39,7 @@ def test_purchases_reduce_savings():
     engine = bootstrap_simulation(SEED, population=30)
     citizen = next(c for c in engine.citizens.values() if not c.is_child())
     savings_before = citizen.savings
-    for _ in range(30):
-        run_tick(engine)
+    run_days(engine, 30)
     purchases = [e for e in engine.log.for_entity(citizen.citizen_id) if e.event_type == EventType.PURCHASE]
     if purchases:
         # savings should have moved (down from purchases, though income/other
@@ -62,9 +60,8 @@ def test_healthcare_spending_is_a_real_lever_not_decorative():
         low.citizens[citizen_id].stress = 0.9
         high.citizens[citizen_id].stress = 0.9
 
-    for _ in range(15):
-        run_tick(low)
-        run_tick(high)
+    run_days(low, 15)
+    run_days(high, 15)
 
     low_visits = len(low.log.of_type(EventType.MEDICAL_VISIT))
     high_visits = len(high.log.of_type(EventType.MEDICAL_VISIT))

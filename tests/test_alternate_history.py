@@ -2,7 +2,7 @@ from life100.events.schemas import EventType
 from life100.simulation.alternate_history import branch_simulation, compare_simulations
 from life100.simulation.causality import trace_effects
 from life100.simulation.disasters import trigger_drought
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.setup import bootstrap_simulation
 
 SEED = 847291
@@ -11,8 +11,7 @@ SEED = 847291
 def _base_engine(n=60, ticks=5):
     engine = bootstrap_simulation(SEED, population=n, simulation_id="sim_base")
     trigger_drought(engine)
-    for _ in range(ticks):
-        run_tick(engine)
+    run_days(engine, ticks)
     return engine
 
 
@@ -45,13 +44,11 @@ def test_two_branches_diverge_after_different_interventions():
     timeline_b = branch_simulation(parent, "sim_b")
 
     # Timeline A: no further intervention, just let the drought run its course.
-    for _ in range(15):
-        run_tick(timeline_a)
+    run_days(timeline_a, 15)
 
     # Timeline B: apply a food subsidy before continuing.
     timeline_b.policies["food_subsidy"] = 0.5
-    for _ in range(15):
-        run_tick(timeline_b)
+    run_days(timeline_b, 15)
 
     comparison = compare_simulations(timeline_a, timeline_b)
     stress_a = comparison["simulation_a"]["metrics"]["average_household_stress"]
@@ -68,8 +65,7 @@ def test_two_branches_diverge_after_different_interventions():
 def test_butterfly_effect_traces_forward_from_a_divergent_event():
     parent = _base_engine()
     branch = branch_simulation(parent, "sim_butterfly")
-    for _ in range(10):
-        run_tick(branch)
+    run_days(branch, 10)
 
     job_lost = [e for e in branch.log.all() if e.event_type == EventType.JOB_LOST and e.simulation_id == "sim_butterfly"]
     if not job_lost:

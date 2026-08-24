@@ -8,7 +8,7 @@ from life100.simulation.disasters import (
     trigger_flood,
     trigger_food_shortage,
 )
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.setup import bootstrap_simulation
 
 SEED = 847291
@@ -62,8 +62,7 @@ def test_a_realistic_damage_fraction_can_also_fail_an_already_weakened_business(
     (not artificially 100%) earthquake."""
     engine = _engine(n=100)
     trigger_drought(engine, duration_ticks=30, severity=0.35)
-    for _ in range(15):
-        run_tick(engine)
+    run_days(engine, 15)
 
     weakened = [b for b in engine.businesses.values() if b.active and 0 < b.cash < b.expenses * 3]
     assert weakened, "expected at least one business weakened but not yet failed by the drought"
@@ -111,7 +110,6 @@ def test_multiple_disasters_can_be_active_and_expire_independently():
     engine = _engine()
     trigger_economic_recession(engine, duration_ticks=5)
     trigger_energy_crisis(engine, duration_ticks=50)
-    for _ in range(6):
-        run_tick(engine)
+    run_days(engine, 6)
     assert "economic_recession" not in engine.active_disasters
     assert "energy_crisis" in engine.active_disasters

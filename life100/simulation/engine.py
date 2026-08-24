@@ -21,6 +21,13 @@ from life100.simulation.households import Household
 from life100.simulation.resources import Resources
 from life100.simulation.world import World
 
+HOURS_PER_DAY = 24  # SRS §9: "1 tick = 1 simulated hour" -- engine.tick is the
+# fundamental hourly counter; engine.day/engine.hour_of_day (below) are
+# derived so the existing once-per-day economic/demographic cadence
+# (economy.py, life_events.py) can keep running exactly once per real day,
+# unchanged, while decisions.py schedules SRS §10's routine phases across
+# the 24 hours in between.
+
 
 class SimulationEngine:
     def __init__(
@@ -62,6 +69,21 @@ class SimulationEngine:
 
     # -- event plumbing -----------------------------------------------
 
+    @property
+    def day(self) -> int:
+        """Whole simulated days elapsed (SRS §9's sim_day). economy.py's
+        daily economic/demographic recompute runs once per day (when
+        `tick % HOURS_PER_DAY == 0`), not once per hour."""
+        return self.tick // HOURS_PER_DAY
+
+    @property
+    def hour_of_day(self) -> int:
+        """Hour within the current simulated day, 0-23. decisions.py uses
+        this to schedule SRS §10's routine phases (wake/work/lunch/
+        shopping/social/sleep) across the day instead of batching every
+        decision into one pass."""
+        return self.tick % HOURS_PER_DAY
+
     def _next_event_id(self) -> str:
         self._seq += 1
         return f"evt_{self.simulation_id}_{self.tick:05d}_{self._seq:04d}"
@@ -71,11 +93,12 @@ class SimulationEngine:
         return self._sim_time()
 
     def _sim_time(self) -> str:
-        year = self.tick // 365 + 1
-        day_of_year = self.tick % 365
+        day = self.day
+        year = day // 365 + 1
+        day_of_year = day % 365
         month = day_of_year // 30 + 1
-        day = day_of_year % 30 + 1
-        return f"YEAR_{year:02d}_MONTH_{month:02d}_DAY_{day:02d}"
+        day_of_month = day_of_year % 30 + 1
+        return f"YEAR_{year:02d}_MONTH_{month:02d}_DAY_{day_of_month:02d}_HOUR_{self.hour_of_day:02d}"
 
     def broad_disaster_multipliers(self) -> tuple[float, float]:
         """(cost_multiplier, demand_multiplier) aggregated across every
@@ -421,9 +444,15 @@ def _apply_price_changed(engine: SimulationEngine, event: Event) -> None:
 
 def _apply_disaster_started(engine: SimulationEngine, event: Event) -> None:
     disaster_type = event.payload["disaster_type"]
+    # `duration_ticks` in the event payload has always meant days (disasters.py's
+    # trigger_* functions/API defaults, e.g. a 20-day drought) -- kept that way
+    # for backward-compatible request/response shapes. Only the internal
+    # bookkeeping here converts to hours, since `engine.tick` is now the
+    # hourly counter `_expire_disasters` (economy.py) compares it against.
+    duration_days = event.payload.get("duration_ticks", 20)
     engine.active_disasters[disaster_type] = {
         "started_tick": engine.tick,
-        "duration": event.payload.get("duration_ticks", 20),
+        "duration": duration_days * HOURS_PER_DAY,
         "kind": event.payload.get("kind"),  # broad_cost_shock | broad_demand_shock | None
         "magnitude": event.payload.get("magnitude", 0.0),
         "event_id": event.event_id,  # explainability: lets downstream events cite the real trigger

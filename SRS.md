@@ -2,6 +2,13 @@
 
 > **Tagline:** Only 100 people. Every life matters.
 
+> **Implementation status:** This is the original specification — the fixed target, not a log of
+> what's built. For current implementation status against every section here, see `SCOPE.md` (the
+> honest, up-to-date gap analysis) and `PROGRESS.md` (the build history). A few sections carry a
+> short `> **Status:**` note directly below their heading where the implementation reached a
+> deliberate, non-obvious point worth flagging in place — those are the exception, not the rule;
+> most sections are left unannotated and `SCOPE.md` remains the authoritative tracker.
+
 ---
 
 ## 1. Executive Summary
@@ -514,6 +521,13 @@ Optimization should only be introduced after profiling identifies a specific bot
 
 # 9. Simulation Time
 
+> **Status:** Implemented as literally specified — `engine.tick` is the hourly counter (1 tick = 1
+> simulated hour), with `engine.day`/`engine.hour_of_day` derived from it. Every event carries a
+> real `simulation_tick` (hourly). Pause/Resume/Step/x1/x10/x100/x1000 are not implemented as named
+> playback controls — the API's `/simulation/tick` (advance N hours or N days) serves the same
+> purpose without the named-speed abstraction. See `SCOPE.md`'s "Closed since the last pass:
+> hourly tick granularity" for the full implementation note.
+
 Simulation time is separate from real-world time.
 
 Example:
@@ -549,6 +563,14 @@ Wall-clock time is irrelevant to the analytical data warehouse.
 ---
 
 # 10. Daily Life Simulation
+
+> **Status:** Implemented as a scheduled decision engine, not a full sub-tick activity
+> simulation — `decisions.py` dispatches each decision type (school, purchases, job search,
+> healthcare/loans, socializing) at a specific hour of the simulated day instead of running a
+> distinct phase for every routine step below. Modified-by factors (employment, health, family,
+> weather/disasters, income, stress, goals, unexpected events) are real and mechanically wired
+> in, not simplified away — only the routine's granularity is a scheduled-dispatch approximation
+> rather than a literal Wake→Breakfast→Commute→...→Sleep state machine per citizen.
 
 Citizens follow dynamic routines such as:
 
@@ -847,6 +869,17 @@ PostgreSQL should answer questions such as:
 ---
 
 # 18. Snowflake Analytical Warehouse
+
+> **Status:** Implemented with a real Snowflake account (not mocked) — `warehouse/
+> snowflake_pipeline.py` provisions the warehouse/database/schema on first use and loads
+> `fact_events`/`dim_citizen` from Postgres, verified live loading 1.79M real events. A DuckDB
+> stand-in (`warehouse/duckdb_pipeline.py`) remains the default/test-covered path since it needs
+> no external account. Core datasets: only `fact_events`/`dim_citizen` are modeled, not the full
+> 12-dataset list below — the event log already carries most of that data (household finances,
+> employment history, disaster impact, etc. are all derivable from it), so the remaining datasets
+> are a modeling/materialization gap, not a missing capability. The critical-path constraint below
+> is honored: `/warehouse/build-snowflake` is a separate, opt-in endpoint the simulation never
+> calls internally.
 
 Snowflake stores historical analytical data.
 

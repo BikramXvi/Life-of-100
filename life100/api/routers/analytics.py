@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends
 
 from life100.api.dependencies import get_engine
 from life100.events.schemas import EventType
-from life100.simulation.engine import SimulationEngine
+from life100.simulation.engine import HOURS_PER_DAY, SimulationEngine
 
 router = APIRouter(tags=["analytics"])
 
@@ -70,6 +70,10 @@ def compute_metrics_timeseries(engine: SimulationEngine) -> list[dict]:
     )
     health_incidents_cumulative = 0
     series = []
+    # `tick` is hourly (SRS §9); accumulate every hour's deltas but only emit
+    # one row per day (at the day boundary, plus the final in-progress day)
+    # so charts show daily-resolution trends exactly as before the
+    # hourly-tick change, instead of 24x as many points.
     for tick in range(max_tick + 1):
         population += pop_delta.get(tick, 0)
         employed += emp_delta.get(tick, 0)
@@ -77,10 +81,13 @@ def compute_metrics_timeseries(engine: SimulationEngine) -> list[dict]:
         health_incidents_cumulative += health_delta.get(tick, 0)
         if tick in price_by_tick:
             price = price_by_tick[tick]
+        if tick % HOURS_PER_DAY != 0 and tick != max_tick:
+            continue
         working_age_estimate = max(population, 1)
         series.append(
             {
                 "tick": tick,
+                "day": tick // HOURS_PER_DAY,
                 "population": population,
                 "employed": employed,
                 "active_businesses": active_businesses,
@@ -101,11 +108,13 @@ def metrics_timeseries(engine: SimulationEngine = Depends(get_engine)) -> list[d
 
 @router.get("/simulation/event-volume")
 def event_volume_by_tick(engine: SimulationEngine = Depends(get_engine)) -> list[dict]:
-    """Event count per tick, and per (tick, event_type) — chart-ready."""
+    """Event count per day, and per (day, event_type) — chart-ready.
+    Bucketed by day (simulation_tick is now hourly, SRS §9) so this stays a
+    "per day" volume chart rather than 24x noisier per-hour bars."""
     counts: dict[tuple[int, str], int] = defaultdict(int)
     for event in engine.log.all():
-        counts[(event.simulation_tick, event.event_type.value)] += 1
-    return [{"tick": tick, "event_type": event_type, "count": n} for (tick, event_type), n in counts.items()]
+        counts[(event.simulation_tick // HOURS_PER_DAY, event.event_type.value)] += 1
+    return [{"day": day, "event_type": event_type, "count": n} for (day, event_type), n in counts.items()]
 
 
 @router.get("/relationships")

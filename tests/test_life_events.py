@@ -1,5 +1,5 @@
 from life100.events.schemas import EventType
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.setup import bootstrap_simulation
 
 SEED = 847291
@@ -7,8 +7,7 @@ SEED = 847291
 
 def _run(n=100, ticks=200):
     engine = bootstrap_simulation(SEED, population=n)
-    for _ in range(ticks):
-        run_tick(engine)
+    run_days(engine, ticks)
     return engine
 
 

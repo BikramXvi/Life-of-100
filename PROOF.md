@@ -11,6 +11,16 @@ narrated claim. Run `uv run pytest tests/test_emergence.py -v` to verify all of 
 numbers quoted here are from actual runs against `seed=847291`, reproduced while writing this
 document.
 
+**Regenerated 2026-08-23** after the SRS §9 hourly-tick change (see `SCOPE.md`/`PROGRESS.md`) —
+every number below is a fresh live run against the current hourly engine, not left over from
+before. Some numbers came back byte-identical to the pre-change run (the sensitivity sweep, the
+10-seed robustness tables, the drought-weakened-business earthquake example) because those
+scenarios only exercise `economy.py`'s daily cadence, which the hourly-tick change deliberately
+left unchanged. Others shifted slightly (the contagion count, the wealth-dispersion table, the
+policy-intervention comparison) because those depend on `decisions.py`'s citizen-level RNG, which
+necessarily changed when decisions were spread across specific hours of the day instead of one
+daily batch — the *mechanism and magnitude* are the same, the *exact* numbers moved by noise.
+
 ---
 
 ## 1. It isn't scripted
@@ -29,7 +39,7 @@ reproducible.
 
 **Different seeds hit different specific people, but the same underlying pattern holds**
 (`test_different_seeds_hit_different_specific_citizens_but_the_same_aggregate_pattern`): three
-different seeds, same drought, same tick count. The *specific* citizens who lose their jobs are
+different seeds, same drought, same day count. The *specific* citizens who lose their jobs are
 different in every run — that's expected of a real generative population, not a fixed target.
 What's *invariant* across all three seeds is the pattern the mechanism actually guarantees: at
 least one food-industry business is always among the first hit, because that's the one thing the
@@ -49,34 +59,34 @@ alone:
 (`test_contagion_reaches_businesses_the_disaster_never_directly_touched`): a drought's only
 *direct* effect is on `food_price_index`. But `demand_multiplier` — which every business's
 revenue depends on, food or not — is driven by average household financial stress, which the
-drought raises through everyone's higher cost of living. Running a 60-tick drought for 90 total
-ticks produces **19 layoffs at non-food businesses** (manufacturing, retail) that were never the
+drought raises through everyone's higher cost of living. Running a 60-day drought for 90 total
+days produces **16 layoffs at non-food businesses** (manufacturing, retail) that were never the
 disaster's target. This is contagion through one shared variable, not two rules bolted together.
 
-It gets more interesting: those 19 layoffs happen at ticks 65–90+, well *after* the drought's
-official 60-tick "active" window ends at tick 60. The effect **outlives the disaster**, because
+It gets more interesting: those 16 layoffs happen on days 65–90, well *after* the drought's
+official 60-day "active" window ends at day 60. The effect **outlives the disaster**, because
 household stress decays slowly. Writing the explainability check for this exposed a real gap —
 the original `caused_by` logic only looked at *currently active* disasters, so these lagged,
 second-order layoffs were showing up with **no recorded cause at all**. Fixed by having the
 engine remember the most recent disaster's event even after it ends
 (`engine.last_disaster_event_id`), and citing it whenever stress is still elevated enough to
-plausibly be the reason. All 19 now correctly trace back to the real `DISASTER_STARTED` event —
+plausibly be the reason. All 16 now correctly trace back to the real `DISASTER_STARTED` event —
 verified, not assumed.
 
 **A shock changes wealth dispersion — in the direction I didn't expect**
 (`test_a_shock_measurably_changes_wealth_dispersion_from_identical_starting_conditions`): branch
-the same population twice, apply a drought to only one branch, run both 60 ticks under otherwise
+the same population twice, apply a drought to only one branch, run both 60 days under otherwise
 identical rules. I wrote this test expecting a shock to *widen* inequality — the naive
 assumption. The actual measurement:
 
-| Tick | Treatment (drought) net-worth spread | Control net-worth spread | Difference |
+| Day | Treatment (drought) net-worth spread | Control net-worth spread | Difference |
 |---|---|---|---|
-| 10 | 16,106 | 16,135 | −28 |
-| 20 | 15,989 | 16,080 | −91 |
-| 30 | 15,826 | 15,999 | −172 |
-| 40 | 15,652 | 15,923 | −271 |
-| 50 | 15,467 | 15,822 | −354 |
-| 60 | 15,298 | 15,734 | −436 |
+| 10 | 16,115 | 16,137 | −22 |
+| 20 | 16,014 | 16,092 | −78 |
+| 30 | 15,852 | 16,006 | −154 |
+| 40 | 15,714 | 15,923 | −209 |
+| 50 | 15,522 | 15,819 | −297 |
+| 60 | 15,351 | 15,720 | −369 |
 
 The drought **compresses** dispersion, monotonically, the opposite of my hypothesis. The
 mechanism: job losses cut into previously-salaried households' income, pulling them down toward
@@ -116,8 +126,8 @@ at `seed=847291`. Repeating it independently at 10 different seeds (`847291, 111
 | | Result |
 |---|---|
 | Seeds showing a `business_failures` tipping point | **10 / 10** |
-| Tipping-bracket midpoints | 0.375, 0.425, 0.425, 0.425, 0.425, 0.475, 0.475, 0.475, 0.475, 0.475 |
-| Mean ± population stdev | **0.445 ± 0.033** |
+| Tipping-bracket midpoints | 0.396, 0.421, 0.429, 0.438, 0.446, 0.463, 0.463, 0.471, 0.471, 0.479 |
+| Mean ± population stdev | **0.447 ± 0.025** |
 
 Every one of ten completely different populations — different names, ages, savings, employer
 assignments — breaks in the same narrow band (severity 0.42–0.48). That consistency is the real
@@ -126,7 +136,7 @@ signature of an emergent property of the cash-flow arithmetic, not a fluke of on
 **Only drought produces this effect within a realistic window — and chasing why exposed a real
 bug, now fixed.** Sweeping every other disaster's own tunable magnitude parameter (flood/
 earthquake damage_fraction 0.1–0.9, disease/recession/energy magnitude 0.05–0.5) at the same
-15-tick window used above: **zero business failures from any of them.** Tracing why led to
+15-day window used above: **zero business failures from any of them.** Tracing why led to
 `engine.py`'s `_apply_business_contracted` handler — earthquake's docstring promises "some
 businesses may be damaged badly enough to fail outright," but damage was applied as a *percentage
 of current cash* and failure required `cash <= 0` exactly. Since `cash * (1 - damage_fraction)`
@@ -135,8 +145,8 @@ zero out a business — verified directly:
 
 | damage_fraction | Cash before | Cash after | Failed? |
 |---|---|---|---|
-| 0.99 (99% wiped out) | 1830.62 | 18.31 | No |
-| 1.00 (100% wiped out) | 4277.47 | 0.00 | Yes |
+| 0.99 (99% wiped out) | 3748.69 | 37.49 | No |
+| 1.00 (100% wiped out) | 3748.69 | 0.00 | Yes |
 
 And the API's `/disasters/earthquake` endpoint didn't even expose `damage_fraction` — every real
 trigger used the hardcoded default of 0.7, which can never fail a business under the old check.
@@ -151,7 +161,7 @@ weakened by a drought does not:
 
 | Scenario | Cash before | Cash after | Failed? |
 |---|---|---|---|
-| Healthy business, earthquake damage_fraction=0.7 | 4205.50 | 1261.65 | No (cash still covers expenses) |
+| Healthy business, earthquake damage_fraction=0.7 | 5677.98 | 1703.39 | No (cash still covers expenses) |
 | Drought-weakened business, same 0.7 earthquake | 1885.22 | 565.57 | **Yes** (positive cash, but below its own expenses) |
 
 `tests/test_disasters.py::test_a_realistic_damage_fraction_can_also_fail_an_already_weakened_business`
@@ -172,7 +182,7 @@ came out byte-identical — worth checking rather than reporting two tables and 
 magnitude=demand_magnitude)` — mechanically identical to `disease_outbreak`'s demand-shock
 component. `disease_outbreak` additionally emits a direct `HEALTH_IMPACTED` event to ~35% of
 citizens, which the identical results show has **no measurable effect on unemployment within this
-15-tick window** — the entire employment effect comes from the shared demand-shock mechanism, not
+15-day window** — the entire employment effect comes from the shared demand-shock mechanism, not
 from the disease's own distinguishing feature. Not a bug: a citizen's health hit raises stress,
 and stress feeds into `demand_multiplier` (the same channel drought uses) — but that's a slower,
 indirect path that plausibly needs longer than 15 days to show up, unlike the immediate shock. A
@@ -184,19 +194,19 @@ genuinely disclosed observation, not a manufactured "both diseases matter equall
 
 (`test_a_policy_intervention_produces_a_measurable_and_explainable_divergence`): branch a
 70-citizen population mid-drought into two identical timelines. Apply exactly one difference — a
-50% food subsidy — to one of them. Run both 20 more ticks under otherwise identical rules.
+50% food subsidy — to one of them. Run both 20 more days under otherwise identical rules.
 
 Real numbers from that run:
 
 | Metric | Subsidized | Unsubsidized |
 |---|---|---|
-| Average household stress | **0.9686** | **0.9986** |
-| Average wealth | 21,489.75 | 21,481.20 |
-| Unemployment rate | 4.44% | 4.44% |
+| Average household stress | **0.9693** | **0.9986** |
+| Average wealth | 21,497.46 | 21,493.46 |
+| Unemployment rate | 6.67% | 6.67% |
 | Population / businesses | 73 / 34 | 73 / 34 |
 
 The subsidy measurably eased stress relative to doing nothing, from the same starting point,
-under the same disaster. The two timelines also produced **1,196 vs. 1,200 events that only
+under the same disaster. The two timelines also produced **1,243 vs. 1,246 events that only
 happened in one of them** — divergence isn't a hand-wave, it's countable, and every one of those
 events is individually inspectable via `GET /events/{id}/causes`/`effects`. Critically, the
 comparison isn't just "two different random runs": the actual `POLICY_CHANGED` event that caused
@@ -212,6 +222,6 @@ made, not just to different numbers.
 uv run pytest tests/test_emergence.py -v
 ```
 
-7 tests, ~11 seconds, no external infra required. Or drive it live through the running stack —
+6 tests, under a second, no external infra required. Or drive it live through the running stack —
 `POST /simulation/branch`, apply different interventions to each, `GET /simulation/compare` — see
 `README.md`'s demo walkthrough.

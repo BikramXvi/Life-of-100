@@ -1,9 +1,19 @@
 """Per-tick economic update loop. SRS §13.
 
-This is the simplified stand-in for SRS §10's full tick-by-tick daily
-routines (see SCOPE.md) — instead of simulating every citizen's day, each
-tick recomputes food prices, business finances, and household budgets, which
-is enough to produce a genuine, non-scripted cascade:
+Since the SRS §9 hourly-tick change, one tick (`run_tick`) is one simulated
+HOUR, not one day (see SCOPE.md / PROGRESS.md for the migration). Two things
+happen at different cadences within it:
+
+- **Every hour**: disaster expiry (now hour-precise) and decisions.py's
+  SRS §10 routine-phase dispatch (wake/work/lunch/shopping/social/sleep
+  scheduled across the day's 24 hours, not batched into one pass).
+- **Once per day** (`engine.hour_of_day == 0`, i.e. every 24th tick): the
+  economic recompute below (food price, business finances, household
+  budgets) and life_events.py's demographic rolls — unchanged code, unchanged
+  constants, run with the exact same cadence as before the hourly-tick
+  change (one pass per real day), so all previously-calibrated behavior
+  (SALARY_PERIOD_DAYS, the drought tipping point, etc.) still holds when
+  re-expressed in day terms:
 
     drought -> food price up -> food-business costs up -> business profit
     down -> business revenue-side demand down economy-wide (households under
@@ -21,7 +31,7 @@ import time
 
 from life100.events.schemas import EventType
 from life100.simulation import decisions, life_events
-from life100.simulation.engine import SimulationEngine
+from life100.simulation.engine import HOURS_PER_DAY, SimulationEngine
 from life100.simulation.resources import (
     DROUGHT_PRODUCTION_MULTIPLIER,
     FOOD_CONSUMPTION_PER_CAPITA,
@@ -44,15 +54,30 @@ SALARY_PERIOD_DAYS = 30
 
 
 def run_tick(engine: SimulationEngine) -> None:
+    """Advance the simulation by one hour (SRS §9). Hourly-cadence work
+    (disaster expiry, routine-phase decisions) always runs; daily-cadence
+    work (economy recompute, life events) only runs on the hour that
+    completes a day, at the same once-per-day frequency as before the
+    hourly-tick change."""
     engine.tick += 1
     engine.tick_timestamps.append(time.time())
     _expire_disasters(engine)
-    _update_food_price(engine)
-    _update_businesses(engine)
-    _update_households(engine)
-    _update_resources(engine)
-    decisions.run_daily_decisions(engine)
-    life_events.run_tick_life_events(engine)
+    decisions.run_hourly_decisions(engine)
+    if engine.hour_of_day == 0:
+        _update_food_price(engine)
+        _update_businesses(engine)
+        _update_households(engine)
+        _update_resources(engine)
+        life_events.run_tick_life_events(engine)
+
+
+def run_days(engine: SimulationEngine, days: int) -> None:
+    """Convenience wrapper: advance by whole days. `run_tick` is now an
+    hourly step (SRS §9), but a lot of calling code (tests, sweeps) naturally
+    thinks in days -- this is just `run_tick` called `days * HOURS_PER_DAY`
+    times, nothing more."""
+    for _ in range(days * HOURS_PER_DAY):
+        run_tick(engine)
 
 
 def _expire_disasters(engine: SimulationEngine) -> None:

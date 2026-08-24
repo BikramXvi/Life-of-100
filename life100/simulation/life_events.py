@@ -2,9 +2,13 @@
 cycle. Deterministic and seeded, same as decisions.py — aging, death,
 marriage, divorce, and childbirth are demographic facts, not AI decisions.
 
-Probabilities are tuned low per tick (these are meant to be occasional life
-events over a population, not everyday occurrences) but population-wide, so
-a multi-week run does show some.
+Since the SRS §9 hourly-tick change, `run_tick_life_events` is called once
+per simulated DAY (economy.py's `run_tick`, gated to `hour_of_day == 0`),
+not once per hourly tick — these per-tick probabilities were always meant to
+be per-day odds (occasional life events, not everyday occurrences), and
+keeping the once-per-day call frequency (reseeded from `engine.day`, which
+counts up 1, 2, 3... exactly like the old daily `engine.tick` did) preserves
+that calibration unchanged.
 """
 
 from __future__ import annotations
@@ -30,7 +34,7 @@ CHILD_BORN_CHANCE_PER_TICK = 0.01
 
 
 def run_tick_life_events(engine: SimulationEngine) -> None:
-    rng = random.Random(engine.world.seed * 7_919 + engine.tick)
+    rng = random.Random(engine.world.seed * 7_919 + engine.day)
     _age_population(engine)
     _consider_deaths(engine, rng)
     _consider_marriages(engine, rng)
@@ -39,7 +43,7 @@ def run_tick_life_events(engine: SimulationEngine) -> None:
 
 
 def _age_population(engine: SimulationEngine) -> None:
-    if engine.tick > 0 and engine.tick % DAYS_PER_YEAR == 0:
+    if engine.day > 0 and engine.day % DAYS_PER_YEAR == 0:
         for citizen in engine.citizens.values():
             if citizen.alive:
                 citizen.age += 1

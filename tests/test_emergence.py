@@ -18,7 +18,7 @@ from pathlib import Path
 from life100.events.schemas import EventType
 from life100.simulation.alternate_history import branch_simulation, compare_simulations
 from life100.simulation.disasters import trigger_drought
-from life100.simulation.economy import FOOD_INDUSTRIES, run_tick
+from life100.simulation.economy import FOOD_INDUSTRIES, run_days
 from life100.simulation.setup import bootstrap_simulation
 
 SEED = 847291
@@ -62,8 +62,7 @@ def test_same_seed_produces_byte_identical_cascade_twice():
     def run():
         engine = bootstrap_simulation(SEED, population=80)
         trigger_drought(engine)
-        for _ in range(20):
-            run_tick(engine)
+        run_days(engine, 20)
         return [(e.event_type, e.source_entity, e.simulation_tick, e.payload) for e in engine.log.all()]
 
     assert run() == run()
@@ -79,8 +78,7 @@ def test_different_seeds_hit_different_specific_citizens_but_the_same_aggregate_
     for seed in (847291, 123456, 999999):
         engine = bootstrap_simulation(seed, population=80)
         trigger_drought(engine)
-        for _ in range(20):
-            run_tick(engine)
+        run_days(engine, 20)
 
         job_lost = engine.log.of_type(EventType.JOB_LOST)
         assert job_lost, f"seed {seed}: expected the mechanism to produce at least one layoff"
@@ -117,8 +115,7 @@ def test_contagion_reaches_businesses_the_disaster_never_directly_touched():
     lagged, second-order case, not the fast, direct one."""
     engine = bootstrap_simulation(SEED, population=100)
     trigger_drought(engine, duration_ticks=60)
-    for _ in range(90):
-        run_tick(engine)
+    run_days(engine, 90)
 
     job_lost = engine.log.of_type(EventType.JOB_LOST)
     non_food_layoffs = [
@@ -157,9 +154,8 @@ def test_a_shock_measurably_changes_wealth_dispersion_from_identical_starting_co
     control = branch_simulation(baseline, "sim_control")
 
     trigger_drought(treatment, duration_ticks=60)
-    for _ in range(60):
-        run_tick(treatment)
-        run_tick(control)
+    run_days(treatment, 60)
+    run_days(control, 60)
 
     def net_worth_spread(engine) -> float:
         values = [c.savings - c.debt for c in engine.citizens.values() if c.alive]
@@ -182,8 +178,7 @@ def test_a_policy_intervention_produces_a_measurable_and_explainable_divergence(
     actual choice that was made."""
     parent = bootstrap_simulation(SEED, population=70, simulation_id="sim_parent")
     trigger_drought(parent)
-    for _ in range(10):
-        run_tick(parent)
+    run_days(parent, 10)
 
     subsidized = branch_simulation(parent, "sim_subsidized")
     unsubsidized = branch_simulation(parent, "sim_unsubsidized")
@@ -196,9 +191,8 @@ def test_a_policy_intervention_produces_a_measurable_and_explainable_divergence(
     )
     assert subsidized.policies["food_subsidy"] == 0.5
 
-    for _ in range(20):
-        run_tick(subsidized)
-        run_tick(unsubsidized)
+    run_days(subsidized, 20)
+    run_days(unsubsidized, 20)
 
     comparison = compare_simulations(subsidized, unsubsidized)
     stress_subsidized = comparison["simulation_a"]["metrics"]["average_household_stress"]

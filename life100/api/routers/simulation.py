@@ -19,7 +19,7 @@ from life100.events.producer import InMemoryEventProducer, KafkaEventProducer
 from life100.events.schemas import EventType
 from life100.simulation.alternate_history import branch_simulation, compare_simulations
 from life100.simulation.economy import run_tick
-from life100.simulation.engine import SimulationEngine
+from life100.simulation.engine import HOURS_PER_DAY, SimulationEngine
 from life100.simulation.setup import bootstrap_simulation
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,13 @@ class StartRequest(BaseModel):
 
 
 class TickRequest(BaseModel):
+    """`ticks` is the literal SRS §9 unit (1 tick = 1 simulated hour) --
+    engine.tick advances by exactly this many hours. `days` is a convenience
+    alternative (adds `days * 24` hours) so callers who think in days don't
+    need to do the multiplication themselves; the two are additive."""
+
     ticks: int = 1
+    days: int = 0
 
 
 def _make_producer():
@@ -93,6 +99,7 @@ def simulation_status(engine: SimulationEngine = Depends(get_engine)) -> dict:
     return {
         "simulation_id": engine.simulation_id,
         "tick": engine.tick,
+        "day": engine.day,
         "food_price_index": round(engine.food_price_index, 4),
         "active_disasters": sorted(engine.active_disasters.keys()),
         "active_disasters_detail": {
@@ -114,9 +121,15 @@ def simulation_status(engine: SimulationEngine = Depends(get_engine)) -> dict:
 
 @router.post("/tick")
 def advance_tick(payload: TickRequest, engine: SimulationEngine = Depends(get_engine)) -> dict:
-    for _ in range(payload.ticks):
+    total_hours = payload.ticks + payload.days * HOURS_PER_DAY
+    for _ in range(total_hours):
         run_tick(engine)
-    return {"tick": engine.tick, "food_price_index": round(engine.food_price_index, 4)}
+    return {
+        "tick": engine.tick,
+        "day": engine.day,
+        "simulation_time": engine.current_simulation_time(),
+        "food_price_index": round(engine.food_price_index, 4),
+    }
 
 
 class BranchRequest(BaseModel):
@@ -145,6 +158,7 @@ def branch(payload: BranchRequest) -> dict:
         "simulation_id": new_branch.simulation_id,
         "parent_simulation_id": parent_id,
         "branch_point_tick": parent.tick,
+        "branch_point_day": parent.day,
     }
 
 
@@ -164,7 +178,11 @@ def list_simulations() -> dict:
         info = getattr(eng, "branch_info", None)
         if info is None:
             return None
-        return {"parent_simulation_id": info.parent_simulation_id, "branch_point_tick": info.branch_point_tick}
+        return {
+            "parent_simulation_id": info.parent_simulation_id,
+            "branch_point_tick": info.branch_point_tick,
+            "branch_point_day": info.branch_point_tick // HOURS_PER_DAY,
+        }
 
     return {
         "active_simulation_id": state.active_simulation_id,
@@ -172,6 +190,7 @@ def list_simulations() -> dict:
             {
                 "simulation_id": sim_id,
                 "tick": eng.tick,
+                "day": eng.day,
                 "population": len(eng.citizens),
                 "branch_info": _branch_info(eng),
             }

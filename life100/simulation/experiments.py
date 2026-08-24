@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from life100.events.schemas import EventType
 from life100.simulation import disasters
 from life100.simulation.alternate_history import branch_simulation
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.engine import SimulationEngine
 
 DISASTER_TRIGGERS = {
@@ -136,9 +136,10 @@ def run_experiment(base_engine: SimulationEngine, scenarios: list[Scenario], tic
     """
     worlds: dict[str, SimulationEngine] = {}
 
+    # `ticks` is a day count (unchanged public meaning); run_tick is now an
+    # hourly step (SRS §9), so run_days keeps the same real-world duration.
     control = branch_simulation(base_engine, f"{base_engine.simulation_id}_control_{_slugify('control')}")
-    for _ in range(ticks):
-        run_tick(control)
+    run_days(control, ticks)
     control_metrics = _metrics(control)
     worlds[control.simulation_id] = control
 
@@ -146,8 +147,7 @@ def run_experiment(base_engine: SimulationEngine, scenarios: list[Scenario], tic
     for i, scenario in enumerate(scenarios):
         world = branch_simulation(base_engine, f"{base_engine.simulation_id}_exp{i}_{_slugify(scenario.name)}")
         _apply_scenario(scenario, world)
-        for _ in range(ticks):
-            run_tick(world)
+        run_days(world, ticks)
         world_metrics = _metrics(world)
         worlds[world.simulation_id] = world
         results.append(

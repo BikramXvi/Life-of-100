@@ -1,6 +1,6 @@
 from life100.api.routers.analytics import compute_metrics_timeseries
 from life100.simulation.disasters import trigger_drought
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.setup import bootstrap_simulation
 
 SEED = 847291
@@ -9,14 +9,16 @@ SEED = 847291
 def test_metrics_timeseries_reconstructs_correctly_and_matches_current_state():
     engine = bootstrap_simulation(SEED, population=100)
     trigger_drought(engine)
-    for _ in range(30):
-        run_tick(engine)
+    run_days(engine, 30)
 
     series = compute_metrics_timeseries(engine)
 
-    assert len(series) == engine.tick + 1
+    # One row per day (plus the final in-progress day), not per raw hourly
+    # tick (SRS §9) -- see compute_metrics_timeseries's day-bucketing.
+    assert len(series) == engine.day + 1
     assert series[0]["tick"] == 0
     assert series[-1]["tick"] == engine.tick
+    assert series[-1]["day"] == engine.day
 
     # the reconstructed final point must exactly match the engine's real
     # current state -- that's the anchor the whole backward walk depends on
@@ -37,8 +39,7 @@ def test_metrics_timeseries_reconstructs_correctly_and_matches_current_state():
 def test_metrics_timeseries_food_price_reflects_the_drought_shock():
     engine = bootstrap_simulation(SEED, population=50)
     trigger_drought(engine)
-    for _ in range(10):
-        run_tick(engine)
+    run_days(engine, 10)
 
     series = compute_metrics_timeseries(engine)
     prices = [row["food_price_index"] for row in series]

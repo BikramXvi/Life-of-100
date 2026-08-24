@@ -42,7 +42,7 @@ from typing import Callable
 from life100.events.schemas import EventType
 from life100.simulation import disasters
 from life100.simulation.alternate_history import branch_simulation
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.engine import SimulationEngine
 from life100.simulation.experiments import _metrics as _compute_metrics
 
@@ -90,8 +90,10 @@ def _sweep_drought_severity(
         world = branch_simulation(base_engine, f"{base_engine.simulation_id}_sens_{tag}_{i}")
         _end_disaster_if_active(world, "drought")
         disasters.trigger_drought(world, duration_ticks=disaster_duration, severity=v)
-        for _ in range(ticks):
-            run_tick(world)
+        # `ticks`/`disaster_duration` are day counts (unchanged public
+        # meaning); run_tick is now an hourly step (SRS §9), so run_days
+        # keeps the same real-world sweep duration/calibration as before.
+        run_days(world, ticks)
         results.append(_compute_metrics(world))
     return results
 

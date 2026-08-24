@@ -58,8 +58,10 @@ def test_full_demo_flow_without_external_infra():
     assert status["active_businesses"] >= 0
     assert status["health_incidents"] >= 0
     assert isinstance(status["active_disasters_detail"], dict)
-    # the 10-tick drought triggered above has already expired by tick 15 --
-    # check the detail dict is populated *while* a disaster is still active instead
+    # `duration_ticks` on disasters means days (unchanged); a 15-hour advance
+    # is under one day, so the 10-day drought above is still active here too
+    # -- triggering flood alongside it (different disaster names, no
+    # conflict) checks the detail dict is populated while disasters are active.
     client.post("/disasters/flood", json={})
     mid_status = client.get("/simulation/status").json()
     assert "flood" in mid_status["active_disasters_detail"]

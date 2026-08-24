@@ -6,9 +6,14 @@ should primarily be handled by deterministic simulation logic." Gemini is
 reserved for the Government/Historian/Business/Household agents' high-level
 reasoning (agents/); this module is the deterministic layer underneath them.
 
-Runs once per tick (called from economy.run_tick) over every living citizen,
-using a `random.Random` seeded from (world seed, tick) — reproducible for a
-given seed, but distinct draws each tick.
+Runs once per hourly tick (called from economy.run_tick), but each decision
+type only fires at its own designated hour-of-day — SRS §10's routine
+(Wake -> Breakfast -> Commute -> Work/School -> Lunch -> Shopping/Recreation
+-> Family/Social -> Sleep) mapped onto specific hours instead of batching
+every decision into one daily pass. Each decision type still fires at most
+once per citizen per day (same *_CHANCE constants as before the hourly-tick
+change), just at a realistic hour rather than all at once. Seeded from
+(world seed, hourly tick) — reproducible for a given seed.
 """
 
 from __future__ import annotations
@@ -31,23 +36,47 @@ LOAN_CHANCE = 0.4
 SOCIAL_INTERACTION_CHANCE = 0.25
 MAX_BUSINESS_HEADCOUNT = 8
 
+# SRS §10's routine diagram, mapped onto hours-of-day. Each hour dispatches
+# only the decision types that make sense for that phase of the day, e.g. a
+# purchase decision at "lunch/shopping" rather than at an arbitrary point.
+HOUR_SCHOOL_OR_WORK_START = 8  # Commute -> Work / School
+HOUR_LUNCH_SHOPPING = 12  # Lunch -> Shopping/Recreation (also job search: a
+# free midday hour for someone unemployed to look for work)
+HOUR_JOB_SEARCH = 13
+HOUR_EVENING_ERRANDS = 19  # healthcare/loans -- things handled after work
+HOUR_FAMILY_SOCIAL = 18  # Family / Social Time
 
-def run_daily_decisions(engine: SimulationEngine) -> None:
+
+def run_hourly_decisions(engine: SimulationEngine) -> None:
+    hour = engine.hour_of_day
+    if hour not in (
+        HOUR_SCHOOL_OR_WORK_START,
+        HOUR_LUNCH_SHOPPING,
+        HOUR_JOB_SEARCH,
+        HOUR_EVENING_ERRANDS,
+        HOUR_FAMILY_SOCIAL,
+    ):
+        return  # commute/work/sleep hours: no decision phase scheduled
+
     rng = random.Random(engine.world.seed * 100_003 + engine.tick)
 
     for citizen in list(engine.citizens.values()):
         if not citizen.alive:
             continue
 
-        if citizen.is_child():
+        if hour == HOUR_SCHOOL_OR_WORK_START and citizen.is_child():
             _decide_school(engine, citizen, rng)
-        else:
-            _decide_purchase_food(engine, citizen, rng)
-            _decide_job_search(engine, citizen, rng)
-            _decide_healthcare(engine, citizen, rng)
-            _decide_loan(engine, citizen, rng)
+        elif not citizen.is_child():
+            if hour == HOUR_LUNCH_SHOPPING:
+                _decide_purchase_food(engine, citizen, rng)
+            elif hour == HOUR_JOB_SEARCH:
+                _decide_job_search(engine, citizen, rng)
+            elif hour == HOUR_EVENING_ERRANDS:
+                _decide_healthcare(engine, citizen, rng)
+                _decide_loan(engine, citizen, rng)
 
-        _decide_socialize(engine, citizen, rng)
+        if hour == HOUR_FAMILY_SOCIAL:
+            _decide_socialize(engine, citizen, rng)
 
 
 def _decide_purchase_food(engine: SimulationEngine, citizen, rng: random.Random) -> None:

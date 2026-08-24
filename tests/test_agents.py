@@ -9,7 +9,7 @@ from life100.agents import business, government, historian, household
 from life100.agents.validator import validate_policy_proposal
 from life100.events.schemas import EventType
 from life100.simulation.disasters import trigger_drought
-from life100.simulation.economy import run_tick
+from life100.simulation.economy import run_days
 from life100.simulation.engine import SimulationEngine
 from life100.simulation.setup import bootstrap_simulation
 
@@ -76,8 +76,7 @@ def test_government_agent_rejected_proposal_never_reaches_state():
 def test_historian_grounds_answer_in_real_events():
     engine = _build_engine()
     trigger_drought(engine)
-    for _ in range(15):
-        run_tick(engine)
+    run_days(engine, 15)
 
     job_lost_events = engine.log.of_type(EventType.JOB_LOST)
     assert job_lost_events, "test setup expects at least one JOB_LOST event"
