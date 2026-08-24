@@ -22,6 +22,16 @@ from sqlalchemy import select
 from life100.db.models import CitizenRow, EventRow
 from life100.db.session import make_engine, make_session_factory
 
+# Snowflake caps a single INSERT ... VALUES statement at ~200,000 expressions
+# (cells, not rows). 10,000 rows keeps every table here (max 11 columns) well
+# under that regardless of how large the events table has grown.
+_MAX_ROWS_PER_INSERT = 10_000
+
+
+def _chunked(rows: list, size: int = _MAX_ROWS_PER_INSERT):
+    for i in range(0, len(rows), size):
+        yield rows[i : i + size]
+
 
 def _get_connection():
     import snowflake.connector  # deferred import, see module docstring
@@ -81,30 +91,33 @@ def build_warehouse(database_url: str | None = None) -> dict[str, int]:
             """
         )
         if events:
-            cur.executemany(
-                "INSERT INTO fact_events VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                [
-                    (
-                        e.event_id,
-                        e.event_type,
-                        e.schema_version,
-                        e.simulation_id,
-                        e.simulation_tick,
-                        e.simulation_time,
-                        e.source_entity,
-                        e.source_type,
-                        e.city_id,
-                        str(e.payload),
-                        e.received_at,
-                    )
-                    for e in events
-                ],
-            )
+            event_rows = [
+                (
+                    e.event_id,
+                    e.event_type,
+                    e.schema_version,
+                    e.simulation_id,
+                    e.simulation_tick,
+                    e.simulation_time,
+                    e.source_entity,
+                    e.source_type,
+                    e.city_id,
+                    str(e.payload),
+                    e.received_at,
+                )
+                for e in events
+            ]
+            for batch in _chunked(event_rows):
+                cur.executemany(
+                    "INSERT INTO fact_events VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    batch,
+                )
         if citizens:
-            cur.executemany(
-                "INSERT INTO dim_citizen VALUES (%s,%s,%s,%s,%s,%s)",
-                [(c.citizen_id, c.name, c.age, c.gender, c.household_id, c.occupation) for c in citizens],
-            )
+            citizen_rows = [
+                (c.citizen_id, c.name, c.age, c.gender, c.household_id, c.occupation) for c in citizens
+            ]
+            for batch in _chunked(citizen_rows):
+                cur.executemany("INSERT INTO dim_citizen VALUES (%s,%s,%s,%s,%s,%s)", batch)
         conn.commit()
     finally:
         cur.close()
