@@ -4,6 +4,190 @@ Newest entries at the top. Each entry: date, SRS stage/section, what was done, w
 
 ---
 
+## 2026-08-23 (latest) — Streamlit dashboard: "command console" visual redesign (final polish)
+
+**Context:** not an SRS stage/section — a visual-only pass over `life100/dashboard/app.py`, the
+final iteration before submission. A deliberate direction change from the earlier "no glow/neon"
+pass (`SCOPE.md`'s "typography/chart refinement" entry): a dark "command console" aesthetic —
+near-black background, cyan/red/green/amber terminal accents, monospace type throughout, bordered
+panels, a persistent top/bottom status bar, scrolling terminal-style log panels. Reference
+screenshots checked into `design/`. Information architecture unchanged (flat sidebar nav: City,
+Experiment, Investigate, People, Events, Disasters, AI Agents); this pass is styling only, not a
+structural rewrite — no functional/behavioral change to any panel.
+
+**Verified working.** No test suite covers the dashboard's visuals (Streamlit UI, not testable via
+pytest per `CLAUDE.md`'s "testability without Godot" principle applying to simulation/economy/event
+code, not presentation) — confirmed live by running the dashboard and checking each tab renders
+correctly against the new palette.
+
+**Next:** no further dashboard passes planned; the React frontend (`frontend/`, see the entry
+below) is the actively-developed second UI going forward, per `WORKING_NOTES.md`.
+
+---
+
+## 2026-08-23 (later still) — A real React frontend, built and Dockerized
+
+**Context:** not an SRS stage/section — an explicit, out-of-band addition on top of the SRS's own
+tech stack (`CLAUDE.md` names Streamlit as the dashboard layer). The user asked for a from-scratch
+"extremely advanced" UI/UX after the Streamlit dashboard had already gone through several redesign
+passes; explicitly chose "start a real React frontend" over further Streamlit iteration, aware of
+the deadline risk. **The Streamlit dashboard (`life100/dashboard/app.py`) was left untouched
+throughout and still runs** — this is a second, additive frontend, not a replacement, so nothing
+about the SRS-scoped submission is at risk if the React app has rough edges.
+
+**Stack:** `frontend/` — Vite + React 19 + TypeScript, Tailwind v4, `react-router-dom`,
+`@tanstack/react-query`, `recharts`, `cmdk` (command palette), `lucide-react`, `deck.gl` (3D city
+map), `d3-force` (relationship graph physics), `zustand` (notifications). `life100/api/main.py`
+gained `CORSMiddleware` so the dev server (a different origin) can call it.
+
+**Built, across the whole session, roughly in order:**
+1. **Shell + design system**: dark/light CSS-custom-property theme (toggle in `useTheme.ts`),
+   Sidebar/TopBar/Layout, a ⌘K command palette, toast/notification stack (`notifications.ts`,
+   `useEventWatcher.ts` — polls events, only surfaces genuinely new ones).
+2. **Every SRS-facing view got its own page**: City (3D deck.gl map, KPIs with sparklines, a live
+   terminal-style event feed, Play/+1/+5/+30-day time controls), Experiment (What If?, Find the
+   Breaking Point), Investigate, People (citizens/households/businesses), Events, Disasters, AI
+   Agents, Analytics, Timelines, Observability — plus new ones the Streamlit version never had:
+   **Calendar** (real day/month math matching the engine's own calendar), a d3-force
+   **Relationship Graph** (family/friend/coworker/neighbor ties, click-to-navigate), and household/
+   business **detail drawers**.
+3. **Causal graph rewrite** (`components/investigate/CausalGraph.tsx`): the old design was a linear
+   chain; this is a real multi-level DAG — backward chain of recorded causes plus a full
+   BFS-expanded forward tree of effects-of-effects (depth/node-capped), built client-side from one
+   bulk event fetch using only explicit `caused_by`/`caused_by_disaster_event_id`/
+   `proposed_event_id` links, matching `causality.py`'s own never-infer discipline.
+4. **Chart export + new chart types** (`lib/chartExport.ts`, `components/ui/ChartFrame.tsx`):
+   hover-revealed PNG (SVG→canvas, with computed styles baked in so CSS variables survive
+   serialization) and CSV export on every chart; added Sankey (money flow: industry revenue split
+   into expenses vs. profit), Treemap (business size map), and Radar (citizen personality) using
+   recharts' own built-in components.
+5. **Alternate Histories tab** (`components/experiment/AlternateHistories.tsx`): ported the one
+   Streamlit feature the rewrite had skipped — branch a timeline (`/simulation/branch`), a
+   range-bar timeline chart with fork-point markers, a timeline registry with per-row "Set active"
+   (`/simulation/activate`), and side-by-side timeline comparison (`/simulation/compare`) with
+   divergent events clickable straight into Investigate.
+6. **Global search page** (`pages/Search.tsx`, `/search?q=`): a real bookmarkable full-results view
+   — searches Events too, which the command palette never did — reachable via a "See all results"
+   item pinned atop the palette's own list.
+7. **Dockerized** (`docker/Dockerfile.frontend`, `docker/nginx.frontend.conf`): multi-stage build
+   (`node:22-alpine` → `npm run build`, served by `nginx:1.27-alpine` with a SPA fallback rule so
+   direct-loading a client-side route like `/people/cit_0015` doesn't 404). New `frontend` service
+   in `docker-compose.yml`, port 4173 (Vite's own "preview" convention) — deliberately not 5173,
+   which is the separate `npm run dev` server already running outside Docker. Added a root
+   `.dockerignore` (didn't exist before) excluding `frontend/node_modules`/`.venv`/etc., since every
+   service already builds with `context: .` and `frontend/node_modules` alone was adding minutes of
+   pure context-transfer time to every build, not just this one.
+
+**Real bugs found and fixed via live testing, not caught by review** (the notable ones):
+- **An uncancellable infinite loop** (`City.tsx`'s Play button): the auto-advance loop was written
+  as `useMemo` instead of `useEffect` — React never invokes a "cleanup" function returned from
+  `useMemo`, so the loop kept calling `/simulation/tick` every 1.4s forever, surviving navigating
+  away from the page entirely, and silently advanced the simulation to Day 935 in the background
+  before it was noticed. Fixed (`useEffect`); had to close the orphaned browser tab and manually
+  restart the simulation to recover.
+- **CausalGraph**: a hardcoded canvas width caused a real 47-node branching event tree to overlap
+  illegibly; fixed by scaling width to the widest level. Fixing that surfaced a second bug it had
+  been masking — the traced root node could land at the horizontal center of a now much-wider
+  canvas while the view defaulted to `scrollLeft: 0`, making the most important node invisible
+  without manual scrolling; fixed with an auto-scroll-to-target effect. A third, unrelated bug
+  surfaced by the same test: the causal graph's wide SVG had no `min-w-0` on its CSS Grid column,
+  so it blew out the grid track and pushed the adjacent Event Detail Inspector panel off-screen.
+- **Sankey money-flow chart**: recharts' default node-label color is invisible against this app's
+  dark theme (dark grey on navy) — every industry/Expenses/Profit label silently disappeared.
+  Fixed with a custom node renderer using the app's own text-color tokens.
+- **Alternate Histories → Investigate deep link**: clicking a divergent event belonging to a
+  currently-inactive timeline hit a 404 (`/events/{id}/effects` only looks at the active
+  simulation) with no recovery. Fixed by passing the owning timeline through the link and showing
+  an inline "Activate & retrace" button instead of a dead end — verified the full recovery flow
+  (switch timeline → retrace → event resolves) actually works, not just the error message.
+- **A CSS Grid overflow bug affecting two unrelated pages**: `Panel`'s content wrapper wasn't
+  itself a flex item, so any `flex-1 overflow-y-auto` scroll area passed as a child had no bounded
+  height to clip against and just grew to fit all its content — City's "Terminal // Events" feed
+  spilled straight through the time-control dock into open page space, and People's citizen
+  Directory list had the identical latent bug. Fixed once in `Panel.tsx` (content wrapper becomes a
+  real flex column only when unpadded, a no-op for every other Panel usage) rather than patching
+  each page separately.
+- **The frontend Docker healthcheck itself**: `wget http://localhost/health` failed with
+  "connection refused" from *inside* its own container even though the page loaded fine from the
+  host — `localhost` resolved to `::1` first, and the custom nginx config only had `listen 80;`
+  (IPv4), having replaced nginx's stock config (which listens on both). Fixed by adding
+  `listen [::]:80;` and pointing the healthcheck at `127.0.0.1` explicitly.
+
+**Verified live** at every stage via Chrome browser automation (not just `tsc -b --noEmit`, though
+that stayed clean throughout) — including, for the Docker pass specifically, a full
+`docker compose build frontend && up -d` and a direct browser load of a deep route
+(`http://localhost:4173/people/cit_0015`) confirming both the SPA fallback and real API data.
+
+**Known, disclosed limitation:** CityMap's building-click-to-select (deck.gl picking) is correct by
+code review but was never confirmed interactively through browser automation in this environment —
+possibly an automation-environment limitation with WebGL picking requiring fully-trusted native
+events, not necessarily a real bug for an actual user.
+
+**Next:** no frontend test suite exists yet (no Vitest/Playwright) — everything above was verified
+manually via live browser testing each session, which doesn't survive as a regression safety net.
+Otherwise the remaining `SCOPE.md` backend gaps (Postgres schema depth, a literal World View map)
+are still the priority items if picked back up.
+
+---
+
+## 2026-08-23 — Hourly tick granularity (SRS §9), closing the last real gap
+
+**Context:** explicitly requested despite the risk of destabilizing a working, fully-tested,
+deadline-imminent system — see the design tradeoffs in `SCOPE.md`'s new "Closed since the last
+pass" section.
+
+**Done:**
+- `engine.py`: `tick` is now the literal hourly counter SRS §9 specifies; `day`/`hour_of_day`
+  properties derived from it; `_sim_time()` extended with an `_HOUR_NN` suffix.
+- `economy.py`: `run_tick` is now a one-hour step. Disaster expiry checks every hour (more
+  precise); the daily economic recompute (food price, business finances, household budgets) and
+  `life_events.py`'s demographic rolls still run exactly once per day (`hour_of_day == 0`),
+  reseeded from `engine.day` — same sequence as the old daily `engine.tick`, so daily-cadence
+  calibration is unchanged. New `run_days(engine, n)` convenience wrapper.
+- `decisions.py`: replaced the single daily decision batch with `run_hourly_decisions`, scheduling
+  SRS §10's routine (school/work start, lunch/shopping, job search, evening healthcare/loans,
+  family/social time) across specific hours instead of bundling every decision into one pass.
+- `disasters.py`/API: `duration_ticks` (disasters), `ticks` (sensitivity.py, experiments.py,
+  `/experiments/*`) all deliberately kept meaning **days**, unchanged — only `/simulation/tick`'s
+  `ticks` is now literally hourly (with an additive `days` convenience field), since that's the
+  direct driver of `engine.tick`.
+- `analytics.py`: `metrics-timeseries`/`event-volume` now bucket by day (`hour_of_day == 0` or the
+  final in-progress hour) instead of emitting one row per raw hour.
+- Dashboard: every "Day"-labeled display (status bar, landing screen, story-mode cards, Overview's
+  `+1/+5/+30 Days` buttons and event feed, causal-chain day labels, Alternate Histories timeline,
+  Economy/Health charts) now reads the API's new `day`/`branch_point_day` fields instead of raw
+  `tick` — the `+N Days` buttons and the "Advance time (custom amount)" control were genuine
+  functional bugs before this fix (would have advanced N *hours*, not days, once `tick` became
+  hourly), not just display issues.
+- Tests: converted every `for _ in range(N): run_tick(engine)` loop (intending N days) to
+  `run_days(engine, N)` across 9 test files. Found and fixed a real regression risk during this:
+  `test_healthcare_spending_is_a_real_lever_not_decorative` was about to start silently passing
+  vacuously (`0 >= 0`) since its `MEDICAL_VISIT` decision hour (19) was never reached within the
+  old test's 15 raw (now-hourly) ticks — confirmed after the fix it exercises real behavior again
+  (119 vs. 190 visits, low vs. high funding).
+- **87/87 tests passing.** Verified live end-to-end via a full `docker compose down -v && up
+  --build`: fresh 20-day drought run reproduced `food_price_index = 2.91`, byte-identical to the
+  pre-change run — confirming the daily-cadence calibration preservation actually worked, not just
+  in theory. Dashboard checked visually (Chrome): status bar shows `DAY 38`/`DAY 43` correctly (not
+  a raw hour count), `+5 Days` advanced the day counter by exactly 5, the event feed shows
+  `Day 43 · 00:00 Job Lost — cit_0018`-style hour-of-day labels, and the Economy tab's charts render
+  clean daily-resolution trend lines (x-axis 0–45, not 0–1080).
+
+**Known, disclosed limitation:** decisions.py's hour-of-day restructuring necessarily changes the
+exact RNG draw sequence for citizen-level decisions (which citizen buys food on which day, etc.) —
+`PROOF.md`'s specific historical tables (10-seed tipping-point sweep, wealth-dispersion table) were
+generated before this change. The core mechanism they document (a real, non-scripted cascade; a
+genuine tipping point around drought severity ~0.43-0.44) depends only on economy.py/life_events.py,
+which are unchanged in calibration — but the exact tables were not re-run in this pass. Worth a
+fresh sweep before treating those specific numbers as current.
+
+**Next:** re-run `PROOF.md`'s multi-seed sensitivity sweep against the new hourly engine to confirm
+the tipping-point finding still holds at the same severity band (expected, not yet re-verified);
+otherwise the remaining `SCOPE.md` gaps (Postgres schema depth, a literal World View map) are the
+only ones left, in that priority order if picked back up.
+
+---
+
 ## 2026-08-22 — Full SRS build-out (post-submission), verified live end-to-end
 
 **Context:** After the certificate submission slice was working, the user asked to build out

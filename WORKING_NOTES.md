@@ -6,6 +6,28 @@ SRS — most of what this file's earlier "Day 2" section scoped out has since be
 
 ---
 
+## React frontend (`frontend/`) — not an SRS stage, an additive second UI (2026-08-23)
+
+Explicit out-of-scope addition on top of the SRS's own tech stack (`CLAUDE.md` names Streamlit as
+the dashboard layer) — see `PROGRESS.md`'s top entry for the full build log. The Streamlit
+dashboard (`life100/dashboard/app.py`) is untouched and still runs; this is additive, not a
+replacement.
+
+**Built and verified live:** City (3D map), Experiment (What If? / Breaking Point / Alternate
+Histories), Investigate (branching causal graph), People (citizens/households/businesses +
+relationship graph), Events, Calendar, Disasters, AI Agents, Analytics (chart export + Sankey/
+Treemap/Radar), Timelines, Observability, global Search, ⌘K command palette, notifications, light/
+dark theme, Dockerized (`docker/Dockerfile.frontend`, port 4173).
+
+**Remaining:**
+- [ ] No automated frontend test suite (Vitest/Playwright) — everything verified via manual live
+      browser testing each session, not a regression safety net.
+- [ ] CityMap building-click-to-select (deck.gl picking): correct by code review, never confirmed
+      interactively through browser automation — likely an automation-environment limitation, not
+      necessarily broken for a real user. Worth a manual check outside this tooling.
+
+---
+
 ## Post-submission: full SRS build-out (2026-08-22)
 
 All of §6, §7, §10-29, §30-33, §35-36 implemented and verified live (62/62 tests, full
@@ -13,11 +35,12 @@ docker-compose stack, real Gemini calls, real Snowflake account). See `PROGRESS.
 for the detailed list and `SCOPE.md` for what's still simplified.
 
 **Remaining, in priority order (from SCOPE.md's gap table):**
-- [ ] Expand Postgres schema toward SRS §17's full table list (currently 5 tables + the event log)
+- [ ] Expand Postgres schema toward SRS §17's full table list (currently 9 tables + the event log)
 - [x] Alembic migrations — `migrations/` with a real initial-schema migration, applied live
 - [ ] World View as an actual rendered 2D map (coordinates already exist on `world.zones`/`buildings`)
-- [ ] Business resurrection after failure (a loan currently doesn't reactivate `active=False`)
-- [ ] Hourly (not daily) tick granularity, if full sub-day routines are ever wanted
+- [x] Business resurrection after failure (a loan reopens `active=False` via a real `BUSINESS_EXPANDED` event)
+- [x] Hourly (not daily) tick granularity (SRS §9) — `engine.tick` is now hourly, `decisions.py`
+      schedules SRS §10's routine across the day; see SCOPE.md's "Closed since the last pass" section
 
 ---
 

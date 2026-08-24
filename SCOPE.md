@@ -15,9 +15,11 @@ than a list of deliberate exclusions.
   and updated by the decision engine's socializing.
 - **Government & Resources entities** (§6.5, §6.7): structured policy levers, tracked food/raw-material
   stocks with `RESOURCE_EXTRACTED` events.
-- **Daily decisions & life events** (§10, §11, §6.3): a deterministic (not LLM-driven, per §11's own
-  rule) per-tick decision engine — purchases, school, job search, healthcare, loans, socializing —
-  plus birth/death/marriage/divorce, all through real events.
+- **Daily decisions & life events** (§9, §10, §11, §6.3): a deterministic (not LLM-driven, per
+  §11's own rule) decision engine — purchases, school, job search, healthcare, loans, socializing
+  — scheduled across SRS §10's routine hours (wake/work-school, lunch-shopping, job search,
+  evening errands, family-social) rather than batched into one daily pass, on top of a literal
+  hourly `engine.tick` (§9) — plus birth/death/marriage/divorce, all through real events.
 - **Economy** (§13): tick-based price/cost/demand cascade, calibrated so a disaster produces a
   believable partial cascade (not instant total collapse, not nothing).
 - **Full event architecture** (§14-15): all SRS-listed event types are emitted somewhere in the
@@ -55,10 +57,18 @@ than a list of deliberate exclusions.
 `warehouse/snowflake_pipeline.py` connects with the user's real credentials, creates the
 warehouse/database/schema on first use if missing (`XSMALL`, `AUTO_SUSPEND=60s`, starts
 suspended to minimize credit usage), and loads `fact_events`/`dim_citizen` from Postgres —
-**verified live**: `POST /warehouse/build-snowflake` successfully loaded 2500+ real events into
-the user's own Snowflake account. `POST /warehouse/build` (DuckDB) remains the default/primary
-path since it needs no external account and is what the automated test suite can exercise
-locally; Snowflake is the opt-in real-infrastructure path alongside it.
+**verified live**: `POST /warehouse/build-snowflake` successfully loaded 1,793,970 real events
+(and 500 citizens) into the user's own Snowflake account. `POST /warehouse/build` (DuckDB)
+remains the default/primary path since it needs no external account and is what the automated
+test suite can exercise locally; Snowflake is the opt-in real-infrastructure path alongside it.
+
+**Bug found and fixed while verifying this live**: the original bulk `INSERT` built one giant
+`executemany` statement for the whole `events` table, which hit Snowflake's ~200,000-expression
+per-statement limit once the table grew past normal demo scale (it had accumulated ~1.8M rows
+from repeated dev-session runs) — `SQL compilation error: maximum number of expressions in a
+list exceeded`. Fixed by chunking both inserts (`fact_events`/`dim_citizen`) into 10,000-row
+batches (`_chunked()`), well under the limit regardless of table size; re-verified with the full
+1.79M-row table loading successfully end-to-end.
 
 ### Alembic migrations
 `migrations/` (env.py wired to `DATABASE_URL` and `db/models.py`'s metadata) with a real initial
@@ -73,13 +83,57 @@ The original `SRS.md`/`ROADMAP.md` specified the Anthropic API. Switched to Goog
 and `ROADMAP.md` §4.7/§25 for where this was updated. The agent architecture (propose → validate →
 apply) is identical regardless of provider; `agents/base.py` isolates the SDK call.
 
+### Deployment (ROADMAP §4.3/Step 30)
+Fully containerized and reproducible: `docker-compose.yml` (Postgres, Redpanda, api, worker,
+dashboard, plus a Redpanda Console added for debugging) — verified live via clean
+`docker compose down -v && up --build` rebuilds. **Not yet done**: an actual always-on production
+hosting environment. Currently reachable only via a Cloudflare quick tunnel (`cloudflared tunnel
+--url`) pointed at the local dashboard container — genuinely publicly reachable over HTTPS, but
+tied to the host machine staying powered on and connected; not the durable cloud deployment
+ROADMAP Step 30 describes. An Azure VM was discussed as the durable option but not set up.
+
 ## Still simplified or not built
 
 | Gap | Why | What it would take |
 |---|---|---|
 | Postgres schema depth | 9 tables now (citizens/households/businesses/events/simulation_state/relationships/government/infrastructure/agents) vs. SRS §17's full wishlist — missing dedicated `assets`/`debts`/`health_records`/`education` tables specifically | The event log is the real durable record and citizen fields already carry this data; splitting it into normalized tables is schema work, not new capability, at this point. |
 | k8s, secret managers | Not needed to demonstrate the required capability | Docker Compose + `.env` is the pragmatic floor for this project's scale. |
-| Full 1-tick-per-hour granularity | 1 tick = 1 simulated day (SRS §9 specifies hourly) | Would need a full daily-routine scheduler (wake/commute/work/lunch/shop/sleep as sub-tick phases) rather than one decision pass per day. |
+
+## Closed since the last pass: hourly tick granularity (SRS §9)
+
+`engine.tick` is now the literal hourly counter SRS §9 specifies (1 tick = 1
+simulated hour), not 1 tick = 1 day. `engine.day`/`engine.hour_of_day` are
+derived from it. `decisions.py`'s citizen decisions no longer batch into one
+daily pass — SRS §10's routine (wake/work/lunch-shopping/job-search/evening
+errands/family-social) is scheduled across specific hours of the day
+instead. `economy.py`'s daily economic recompute and `life_events.py`'s
+demographic rolls still run exactly once per day (gated on
+`hour_of_day == 0`), reseeded from `engine.day` (which counts up 1, 2, 3...
+identically to the old daily `engine.tick`) — so all previously-calibrated
+daily-cadence behavior (SALARY_PERIOD_DAYS, the drought business-failure
+tipping point, etc.) is unchanged when re-expressed in day terms. Verified
+live end-to-end after the change: a fresh 20-day drought run reproduced
+`food_price_index = 2.91` byte-identical to the pre-change run.
+
+Every public parameter still named `duration_ticks`/`ticks` (disasters.py,
+sensitivity.py, experiments.py, the `/experiments/*` endpoints) intentionally
+kept meaning **days**, unchanged, to avoid an API/demo-wide rename; only
+`/simulation/tick`'s `ticks` field is now the literal hourly unit (with an
+additive `days` convenience field alongside it) since that endpoint is the
+direct, literal driver of `engine.tick`.
+
+**Known, disclosed consequence**: restructuring decisions.py into hour-of-day
+phases necessarily changes the exact RNG draw sequence for citizen decisions
+(though not for the economy/life-events daily cadence, which is unchanged).
+`PROOF.md` has since been fully regenerated against the new hourly engine
+(2026-08-23) — every number in it, including the 10-seed robustness tables,
+is a fresh live run, not left over from before. As expected, numbers tied
+only to economy.py/life_events.py (the sensitivity sweep, both 10-seed
+robustness tables, the drought-weakened-business earthquake example) came
+back byte-identical to the pre-change run; numbers touching decisions.py's
+citizen-level RNG (the contagion count, the wealth-dispersion table, the
+policy-intervention comparison) shifted slightly in magnitude while the
+underlying finding (contagion, compression, measurable divergence) held.
 
 ## Fixed since the last pass
 
