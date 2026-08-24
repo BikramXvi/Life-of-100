@@ -48,6 +48,7 @@ services:
         condition: service_healthy
 
   api:
+    image: bikramtamang/life100-api:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.api
@@ -64,6 +65,7 @@ services:
         condition: service_healthy
 
   worker:
+    image: bikramtamang/life100-worker:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.worker
@@ -79,6 +81,7 @@ services:
         condition: service_healthy
 
   dashboard:
+    image: bikramtamang/life100-dashboard:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.dashboard
@@ -91,6 +94,7 @@ services:
       - api
 
   frontend:
+    image: bikramtamang/life100-frontend:latest
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend

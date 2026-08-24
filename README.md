@@ -71,17 +71,42 @@ cp .env.example .env   # fill in GEMINI_API_KEY at minimum
 uv run pytest          # 62 tests, no external infra required — all Gemini calls are mocked
 ```
 
-**Full stack (Docker):**
+**Full stack (Docker), building images locally:**
 
 ```bash
 cp .env.example .env   # fill in GEMINI_API_KEY (and SNOWFLAKE_* if you want the real path)
 docker compose up --build
 ```
 
-This starts Postgres (`:5432`), Redpanda (`:19092`), the API (`:8000`), the consumer worker, the
-Streamlit dashboard (`:8501`), and the Dockerized React frontend (`:4173`, a static production
-build served by nginx — separate from the `frontend/` folder's own `npm run dev` on `:5173`).
-Swagger docs: http://localhost:8000/docs
+**Full stack (Docker), using prebuilt images — no build step:**
+
+```bash
+cp .env.example .env   # fill in GEMINI_API_KEY (and SNOWFLAKE_* if you want the real path)
+docker compose pull    # pulls bikramtamang/life100-{api,worker,dashboard,frontend} from Docker Hub
+docker compose up
+```
+
+Either way this starts Postgres (`:5432`), Redpanda (`:19092`), the API (`:8000`), the consumer
+worker, the Streamlit dashboard (`:8501`), and the Dockerized React frontend (`:4173`, a static
+production build served by nginx — separate from the `frontend/` folder's own `npm run dev` on
+`:5173`). Swagger docs: http://localhost:8000/docs
+
+The four application images (`api`/`worker`/`dashboard`/`frontend` — not `postgres`/`redpanda`,
+which pull from their own upstream registries either way) are also public on Docker Hub
+individually, if you just want one:
+
+```bash
+docker pull bikramtamang/life100-api
+docker pull bikramtamang/life100-worker
+docker pull bikramtamang/life100-dashboard
+docker pull bikramtamang/life100-frontend
+```
+
+`docker-compose.yml` declares both `image:` and `build:` for these four services — `docker compose
+up --build` always rebuilds from source; `docker compose pull` (or a plain `up` once an image is
+already present locally) uses the published image instead. Published from this machine, not CI —
+if you change `life100/`, `frontend/`, or a Dockerfile, rebuild and `docker compose push` a new tag
+yourself to keep the published images current; there's no automation re-publishing them on commit.
 
 The API container also applies Postgres schema migrations on top of the zero-friction
 `create_all` bootstrap:
