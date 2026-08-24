@@ -1,0 +1,15 @@
+# Root .dockerignore -- every service in docker-compose.yml builds with
+# context: . (repo root), so this trims the build context for all of them.
+# Adding it now because frontend/node_modules alone was ~150MB+ of pure
+# build-context transfer time that had nothing to do with any Dockerfile.
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+*.log

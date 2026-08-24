@@ -78,8 +78,10 @@ cp .env.example .env   # fill in GEMINI_API_KEY (and SNOWFLAKE_* if you want the
 docker compose up --build
 ```
 
-This starts Postgres (`:5432`), Redpanda (`:19092`), the API (`:8000`), the consumer worker, and
-the Streamlit dashboard (`:8501`). Swagger docs: http://localhost:8000/docs
+This starts Postgres (`:5432`), Redpanda (`:19092`), the API (`:8000`), the consumer worker, the
+Streamlit dashboard (`:8501`), and the Dockerized React frontend (`:4173`, a static production
+build served by nginx — separate from the `frontend/` folder's own `npm run dev` on `:5173`).
+Swagger docs: http://localhost:8000/docs
 
 The API container also applies Postgres schema migrations on top of the zero-friction
 `create_all` bootstrap:
@@ -106,7 +108,7 @@ curl -X POST localhost:8000/simulation/start -H "Content-Type: application/json"
 ```bash
 curl -X POST localhost:8000/disasters/drought -H "Content-Type: application/json" \
   -d '{"duration_ticks": 20}'
-curl -X POST localhost:8000/simulation/tick -H "Content-Type: application/json" -d '{"ticks": 20}'
+curl -X POST localhost:8000/simulation/tick -H "Content-Type: application/json" -d '{"days": 20}'
 # -> food_price_index climbs while the drought is active, layoffs and business failures emerge
 #    from the tick loop recomputing every business's finances daily — not an
 #    `if drought: raj.lose_job()` (see life100/simulation/economy.py).
@@ -144,9 +146,9 @@ curl -X POST localhost:8000/simulation/branch -d '{"new_simulation_id": "timelin
 curl -X POST localhost:8000/simulation/branch -d '{"new_simulation_id": "timeline_b"}'
 curl -X POST localhost:8000/simulation/activate/timeline_a
 curl -X POST localhost:8000/ai/government/propose   # e.g. a food subsidy, only on timeline_a
-curl -X POST localhost:8000/simulation/tick -d '{"ticks": 15}'
+curl -X POST localhost:8000/simulation/tick -d '{"days": 15}'
 curl -X POST localhost:8000/simulation/activate/timeline_b
-curl -X POST localhost:8000/simulation/tick -d '{"ticks": 15}'
+curl -X POST localhost:8000/simulation/tick -d '{"days": 15}'
 curl "localhost:8000/simulation/compare?simulation_a=timeline_a&simulation_b=timeline_b"
 # -> per-branch metrics + the events unique to each timeline (the divergence)
 ```

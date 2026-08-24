@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   Design tokens. One accent, a neutral surface scale, precise spacing.
+   Dark-first (this is the primary experience) with light-theme overrides.
+   ============================================================================ */
+:root {
+  --bg: #0a0b0d;
+  --bg-elevated: #111318;
+  --surface: #15171c;
+  --surface-hover: #1a1d23;
+  --border: #23262d;
+  --border-strong: #34383f;
+
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0aa;
+  --text-tertiary: #5c626d;
+
+  --accent: #5b9bf5;
+  --accent-dim: #2a3f5f;
+  --accent-fg: #061018;
+
+  --success: #3ecf8e;
+  --danger: #f2545b;
+  --warning: #f0a742;
+  --violet: #9b8afb;
+  --teal: #4fc3c9;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #f7f8fa;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f0f1f3;
+  --border: #e3e5e9;
+  --border-strong: #cdd0d6;
+
+  --text-primary: #16181c;
+  --text-secondary: #565c66;
+  --text-tertiary: #8a8f99;
+
+  --accent: #2f6fe4;
+  --accent-dim: #dbe7fd;
+  --accent-fg: #ffffff;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+
+.font-mono { font-family: var(--font-mono); }
+
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Subtle focus ring, not a default browser blue box */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out;
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in {
+  animation: slide-in-right 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}

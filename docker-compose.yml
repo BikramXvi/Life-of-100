@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: life100
       POSTGRES_DB: life100
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - life100_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -36,6 +36,16 @@ services:
       interval: 5s
       timeout: 5s
       retries: 15
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
 
   api:
     build:
@@ -77,6 +87,18 @@ services:
       API_BASE_URL: http://api:8000
     ports:
       - "8501:8501"
+    depends_on:
+      - api
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      # 4173 (Vite's own conventional "preview" port), not 5173 -- that one
+      # is the `npm run dev` server already running on this machine outside
+      # Docker; this is the separately-built, Dockerized production build.
+      - "4173:80"
     depends_on:
       - api
 

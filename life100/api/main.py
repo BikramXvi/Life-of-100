@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI  # noqa: E402 — must follow load_dotenv()
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 from life100.api.routers import (  # noqa: E402
     ai,
@@ -32,6 +33,17 @@ app = FastAPI(
         "Only 100 people. Every life matters."
     ),
     version="0.1.0",
+)
+
+# No cookies/auth on this API (see agents/base.py, api/state.py) -- a wide-open
+# CORS policy is the pragmatic choice for a local research/demo tool served
+# behind a tunnel, rather than an allowlist that breaks every time the
+# frontend's dev-server port or tunnel hostname changes.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(simulation.router)

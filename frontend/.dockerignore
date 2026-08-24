@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+*.log
+.git
+.vscode
+
+# NOT excluded on purpose: .env -- Vite bakes VITE_API_BASE_URL into the
+# built bundle at `npm run build` time, so the build stage needs it present
+# in the build context. It only holds a public API base URL, not a secret.
